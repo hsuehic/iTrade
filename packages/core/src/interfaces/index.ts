@@ -120,14 +120,20 @@ export interface IExchange extends EventEmitter {
   ): Promise<IsolatedMarginLimits>;
 
   // 🆕 Internal wallet-to-wallet transfer (Funding / Spot / Perpetual / unified
-  // Trading wallet). Optional — only implemented by exchanges with a unified
+  // Trading wallet, plus the Binance-only COIN-M, cross/isolated margin and
+  // options wallets). Optional — only implemented by exchanges with a unified
   // transfer API (currently Binance, OKX). Callers must check
   // `typeof exchange.transferFunds === 'function'` before use, and should use
   // `getSupportedTransferWallets()` to know which wallet types are valid for
   // this exchange (e.g. OKX exposes FUNDING/TRADING, not SPOT/PERPETUAL).
   transferFunds?(params: TransferFundsParams): Promise<TransferFundsResult>;
   getSupportedTransferWallets?(): AccountWalletType[];
-  getWalletBalances?(walletType: AccountWalletType): Promise<Balance[]>;
+  // `symbol` only matters for wallets that hold one balance per pair — today
+  // that is ISOLATED_MARGIN, where omitting it returns the aggregate across
+  // every isolated pair the account holds.
+  getWalletBalances?(walletType: AccountWalletType, symbol?: string): Promise<Balance[]>;
+  // 🆕 Isolated-margin pairs the account can transfer against (Binance only).
+  getIsolatedMarginSymbols?(): Promise<string[]>;
 
   // Exchange Info
   getExchangeInfo(): Promise<ExchangeInfo>;

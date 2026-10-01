@@ -55,8 +55,16 @@ export class BinanceExchange extends BaseExchange {
     'wss://fstream.binance.com/public/stream';
   private static readonly _FUTURES_TESTNET_WS = 'wss://stream.binancefuture.com/stream';
 
+  // 🆕 COIN-M (delivery) futures API URLs. COIN-M is a separate wallet on a
+  // separate host from USDⓈ-M (/dapi vs /fapi): balances are denominated in
+  // the coin itself (BTC, ETH, ...), not in a USDT-margined pair. Binance runs
+  // the USDⓈ-M and COIN-M testnets on the same host.
+  private static readonly COIN_M_MAINNET_URL = 'https://dapi.binance.com';
+  private static readonly COIN_M_TESTNET_URL = 'https://testnet.binancefuture.com';
+
   private spotClient: AxiosInstance;
   private futuresClient: AxiosInstance;
+  private coinFuturesClient: AxiosInstance;
   private _isTestnet: boolean;
   private wsManager: BinanceWebSocketManager;
   private symbolMap = new Map<string, string>(); // normalized_marketType -> original symbol mapping
@@ -120,6 +128,22 @@ export class BinanceExchange extends BaseExchange {
         ? BinanceExchange.FUTURES_TESTNET_URL
         : BinanceExchange.FUTURES_MAINNET_URL,
       timeout: 30000,
+    });
+
+    // 🆕 COIN-M futures client — the COIN-M wallet lives behind /dapi, which
+    // is a different host from /fapi (USDⓈ-M). Same HMAC signing scheme.
+    this.coinFuturesClient = axios.create({
+      baseURL: isTestnet
+        ? BinanceExchange.COIN_M_TESTNET_URL
+        : BinanceExchange.COIN_M_MAINNET_URL,
+      timeout: 30000,
+    });
+
+    this.coinFuturesClient.interceptors.request.use((config) => {
+      if (this.credentials) {
+        return this.addAuthentication(config);
+      }
+      return config;
     });
 
     // Add request interceptor for authentication on futures client
@@ -1036,28 +1060,79 @@ export class BinanceExchange extends BaseExchange {
     return transfers;
   }
 
-  // 🆕 Internal wallet-to-wallet transfers (Funding / Spot / Perpetual). Binance
-  // exposes these as separate wallets and supports every pairwise combination
-  // via a single "Universal Transfer" endpoint keyed by a `type` enum.
+  // 🆕 Internal wallet-to-wallet transfers (Funding / Spot / USDⓈ-M / COIN-M /
+  // cross & isolated margin / options). Binance
+  // exposes these as separate wallets and moves funds between them through a
+  // single "Universal Transfer" endpoint keyed by a `type` enum. Every `type`
+  // Binance documents is listed below; the pairs that are *missing* (USDⓈ-M <->
+  // COIN-M, COIN-M <-> Options, Funding/Options <-> Isolated Margin) have no
+  // `type` value at all — which is exactly why the UI is driven by the
+  // @itrade/core route table instead of a flat wallet list.
+  //
+  // The isolated-margin routes additionally require `fromSymbol` / `toSymbol`
+  // on the request (see transferFunds). Note Binance spells the two isolated
+  // families differently upstream — `MAIN_ISOLATED_MARGIN` (with underscore)
+  // for the Spot side, `MARGIN_ISOLATEDMARGIN` (without) for the cross-margin
+  // side. That is upstream's naming, not a typo introduced here.
   private static readonly TRANSFER_TYPE_MAP: Partial<Record<string, string>> = {
+    // Funding wallet.
     [`${AccountWalletType.FUNDING}_${AccountWalletType.SPOT}`]: 'FUNDING_MAIN',
     [`${AccountWalletType.SPOT}_${AccountWalletType.FUNDING}`]: 'MAIN_FUNDING',
     [`${AccountWalletType.FUNDING}_${AccountWalletType.PERPETUAL}`]: 'FUNDING_UMFUTURE',
     [`${AccountWalletType.PERPETUAL}_${AccountWalletType.FUNDING}`]: 'UMFUTURE_FUNDING',
+    [`${AccountWalletType.FUNDING}_${AccountWalletType.COIN_M}`]: 'FUNDING_CMFUTURE',
+    [`${AccountWalletType.COIN_M}_${AccountWalletType.FUNDING}`]: 'CMFUTURE_FUNDING',
+    [`${AccountWalletType.FUNDING}_${AccountWalletType.MARGIN}`]: 'FUNDING_MARGIN',
+    [`${AccountWalletType.MARGIN}_${AccountWalletType.FUNDING}`]: 'MARGIN_FUNDING',
+    [`${AccountWalletType.FUNDING}_${AccountWalletType.OPTION}`]: 'FUNDING_OPTION',
+    [`${AccountWalletType.OPTION}_${AccountWalletType.FUNDING}`]: 'OPTION_FUNDING',
+    // Spot wallet.
     [`${AccountWalletType.SPOT}_${AccountWalletType.PERPETUAL}`]: 'MAIN_UMFUTURE',
     [`${AccountWalletType.PERPETUAL}_${AccountWalletType.SPOT}`]: 'UMFUTURE_MAIN',
+    [`${AccountWalletType.SPOT}_${AccountWalletType.COIN_M}`]: 'MAIN_CMFUTURE',
+    [`${AccountWalletType.COIN_M}_${AccountWalletType.SPOT}`]: 'CMFUTURE_MAIN',
+    [`${AccountWalletType.SPOT}_${AccountWalletType.MARGIN}`]: 'MAIN_MARGIN',
+    [`${AccountWalletType.MARGIN}_${AccountWalletType.SPOT}`]: 'MARGIN_MAIN',
+    [`${AccountWalletType.SPOT}_${AccountWalletType.OPTION}`]: 'MAIN_OPTION',
+    [`${AccountWalletType.OPTION}_${AccountWalletType.SPOT}`]: 'OPTION_MAIN',
+    [`${AccountWalletType.SPOT}_${AccountWalletType.ISOLATED_MARGIN}`]:
+      'MAIN_ISOLATED_MARGIN',
+    [`${AccountWalletType.ISOLATED_MARGIN}_${AccountWalletType.SPOT}`]:
+      'ISOLATED_MARGIN_MAIN',
+    // Derivative-account wallets.
+    [`${AccountWalletType.PERPETUAL}_${AccountWalletType.MARGIN}`]: 'UMFUTURE_MARGIN',
+    [`${AccountWalletType.MARGIN}_${AccountWalletType.PERPETUAL}`]: 'MARGIN_UMFUTURE',
+    [`${AccountWalletType.PERPETUAL}_${AccountWalletType.OPTION}`]: 'UMFUTURE_OPTION',
+    [`${AccountWalletType.OPTION}_${AccountWalletType.PERPETUAL}`]: 'OPTION_UMFUTURE',
+    [`${AccountWalletType.COIN_M}_${AccountWalletType.MARGIN}`]: 'CMFUTURE_MARGIN',
+    [`${AccountWalletType.MARGIN}_${AccountWalletType.COIN_M}`]: 'MARGIN_CMFUTURE',
+    [`${AccountWalletType.MARGIN}_${AccountWalletType.OPTION}`]: 'MARGIN_OPTION',
+    [`${AccountWalletType.OPTION}_${AccountWalletType.MARGIN}`]: 'OPTION_MARGIN',
+    [`${AccountWalletType.MARGIN}_${AccountWalletType.ISOLATED_MARGIN}`]:
+      'MARGIN_ISOLATEDMARGIN',
+    [`${AccountWalletType.ISOLATED_MARGIN}_${AccountWalletType.MARGIN}`]:
+      'ISOLATEDMARGIN_MARGIN',
   };
 
   public getSupportedTransferWallets(): AccountWalletType[] {
+    // Order pinned to the @itrade/core route table by the drift-guard test in
+    // __tests__/internalTransferRoutes.test.ts.
     return [
       AccountWalletType.FUNDING,
       AccountWalletType.SPOT,
       AccountWalletType.PERPETUAL,
+      AccountWalletType.COIN_M,
+      AccountWalletType.MARGIN,
+      AccountWalletType.OPTION,
+      AccountWalletType.ISOLATED_MARGIN,
       AccountWalletType.EARN,
     ];
   }
 
-  public async getWalletBalances(walletType: AccountWalletType): Promise<Balance[]> {
+  public async getWalletBalances(
+    walletType: AccountWalletType,
+    symbol?: string,
+  ): Promise<Balance[]> {
     switch (walletType) {
       case AccountWalletType.SPOT: {
         const params = this.signRequest({ timestamp: Date.now() });
@@ -1097,11 +1172,118 @@ export class BinanceExchange extends BaseExchange {
             .add(this.formatDecimal(asset.freeze)),
         }));
       }
+      case AccountWalletType.COIN_M: {
+        // COIN-M (delivery) balances are coin-denominated (BTC, ETH, ...) and
+        // live on the separate /dapi host. Same shape as the USDⓈ-M feed —
+        // including `locked`, which is "balance minus available" in the futures
+        // margin sense (open positions/margin), not a wallet hold. Binance can
+        // report a larger availableBalance than balance in edge cases, so this
+        // is mirrored from the PERPETUAL branch above rather than clamped.
+        const params = this.signRequest({ timestamp: Date.now() });
+        const response = await this.coinFuturesClient.get('/dapi/v1/balance', { params });
+        return (response.data || []).map((asset: any) => ({
+          asset: asset.asset,
+          free: this.formatDecimal(asset.availableBalance),
+          locked: this.formatDecimal(asset.balance).sub(
+            this.formatDecimal(asset.availableBalance),
+          ),
+          total: this.formatDecimal(asset.balance),
+        }));
+      }
+      case AccountWalletType.MARGIN: {
+        // Cross-margin account. `free`/`locked` are the margin wallet's own
+        // holdings; `borrowed` is deliberately excluded — borrowed funds are
+        // not ours to move.
+        const params = this.signRequest({ timestamp: Date.now() });
+        const response = await this.httpClient.get('/sapi/v1/margin/account', { params });
+        return (response.data?.userAssets || []).map((asset: any) => ({
+          asset: asset.asset,
+          free: this.formatDecimal(asset.free),
+          locked: this.formatDecimal(asset.locked),
+          total: this.formatDecimal(asset.free).add(this.formatDecimal(asset.locked)),
+        }));
+      }
+      case AccountWalletType.ISOLATED_MARGIN: {
+        // One isolated margin account per pair. `symbol` narrows this to the
+        // single pair a transfer addresses; without it we report the
+        // account-wide total across every isolated pair (what the assets page
+        // wants). Summing pairs is safe because each pair holds its own funds.
+        const entries = await this.fetchIsolatedMarginAssets();
+        const wanted = symbol?.trim().toUpperCase();
+        const scoped = wanted
+          ? entries.filter(
+              (entry: any) => String(entry?.symbol || '').toUpperCase() === wanted,
+            )
+          : entries;
+
+        if (wanted && scoped.length === 0) {
+          throw new Error(`Binance has no isolated margin account for "${wanted}"`);
+        }
+
+        const byAsset = new Map<string, { free: Decimal; locked: Decimal }>();
+        for (const entry of scoped) {
+          for (const leg of [entry?.baseAsset, entry?.quoteAsset]) {
+            if (!leg?.asset) {
+              continue;
+            }
+            const current = byAsset.get(leg.asset) ?? {
+              free: new Decimal(0),
+              locked: new Decimal(0),
+            };
+            current.free = current.free.add(this.formatDecimal(leg.free || '0'));
+            current.locked = current.locked.add(this.formatDecimal(leg.locked || '0'));
+            byAsset.set(leg.asset, current);
+          }
+        }
+
+        return [...byAsset.entries()].map(([asset, { free, locked }]) => ({
+          asset,
+          free,
+          locked,
+          total: free.add(locked),
+        }));
+      }
+      case AccountWalletType.OPTION:
+        // Binance's Options API (/eapi) exposes no balance endpoint: the
+        // Options wallet can be a transfer source or destination, but its
+        // holdings cannot be listed. Fail loudly rather than report a fake 0.
+        throw new Error('Binance does not expose an Options wallet balance');
       case AccountWalletType.EARN:
         return this.getSimpleEarnBalances();
       default:
         throw new Error(`Binance does not support the "${walletType}" wallet`);
     }
+  }
+
+  // 🆕 Shared reader for the per-pair isolated margin accounts. One response
+  // carries every isolated pair the account has — no paging. Binance caps how
+  // many isolated accounts an account may hold (see
+  // GET /sapi/v1/margin/isolated/accountLimit, `maxAccount`), so the list is
+  // bounded on their side. The endpoint also accepts a `symbols` filter, which
+  // we deliberately omit here: both callers (the pair picker and the aggregated
+  // balance read) want the whole set.
+  private async fetchIsolatedMarginAssets(): Promise<any[]> {
+    const params = this.signRequest({ timestamp: Date.now() });
+    const response = await this.httpClient.get('/sapi/v1/margin/isolated/account', {
+      params,
+    });
+    return response.data?.assets || [];
+  }
+
+  // 🆕 Pairs the account can move isolated margin funds against. A caller needs
+  // one of these before it can address an ISOLATED_MARGIN transfer — that
+  // wallet holds a separate balance per pair.
+  public async getIsolatedMarginSymbols(): Promise<string[]> {
+    const assets = await this.fetchIsolatedMarginAssets();
+    return (
+      assets
+        // `isolatedCreated === false` marks a pair with no isolated account yet,
+        // so it can neither send nor receive funds. The check is written so a
+        // response that omits the flag still yields its symbols.
+        .filter((entry) => Boolean(entry?.symbol) && entry.isolatedCreated !== false)
+        .map((entry) => String(entry.symbol))
+        .sort()
+    );
   }
 
   // 🆕 Simple Earn holdings (flexible + locked products). Flexible positions
@@ -1189,6 +1371,21 @@ export class BinanceExchange extends BaseExchange {
       return this.transferSimpleEarn(asset, amount, from, to);
     }
 
+    // 🆕 Isolated margin balances are per pair, so those routes need the pair on
+    // the request. Binance names the field after the isolated side: `toSymbol`
+    // when funds move *into* isolated margin, `fromSymbol` when they move out.
+    // (ISOLATED_MARGIN -> ISOLATED_MARGIN would need both and is not a route.)
+    const isIsolatedRoute =
+      from === AccountWalletType.ISOLATED_MARGIN ||
+      to === AccountWalletType.ISOLATED_MARGIN;
+    const symbol = params.symbol?.trim().toUpperCase();
+
+    if (isIsolatedRoute && !symbol) {
+      throw new Error(
+        'Binance isolated margin transfers require the pair, e.g. symbol=BTCUSDT',
+      );
+    }
+
     const type = BinanceExchange.TRANSFER_TYPE_MAP[`${from}_${to}`];
     if (!type) {
       throw new Error(`Binance does not support transferring from ${from} to ${to}`);
@@ -1198,6 +1395,14 @@ export class BinanceExchange extends BaseExchange {
       type,
       asset: asset.toUpperCase(),
       amount: amount.toString(),
+      // `symbol` is only meaningful on the isolated margin routes; on every
+      // other pair it is ignored rather than rejected, so a caller that always
+      // passes its form's symbol field still works.
+      ...(isIsolatedRoute
+        ? to === AccountWalletType.ISOLATED_MARGIN
+          ? { toSymbol: symbol }
+          : { fromSymbol: symbol }
+        : {}),
       timestamp: Date.now(),
     });
 

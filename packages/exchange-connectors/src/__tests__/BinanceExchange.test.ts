@@ -344,11 +344,15 @@ describe('BinanceExchange transferFunds', () => {
     (exchange as any).httpClient.post = postSpy;
   });
 
-  it('exposes FUNDING, SPOT, PERPETUAL, and EARN as supported wallets', () => {
+  it('exposes every wallet the Universal Transfer API can reach', () => {
     expect(exchange.getSupportedTransferWallets()).toEqual([
       AccountWalletType.FUNDING,
       AccountWalletType.SPOT,
       AccountWalletType.PERPETUAL,
+      AccountWalletType.COIN_M,
+      AccountWalletType.MARGIN,
+      AccountWalletType.OPTION,
+      AccountWalletType.ISOLATED_MARGIN,
       AccountWalletType.EARN,
     ]);
   });
@@ -360,6 +364,19 @@ describe('BinanceExchange transferFunds', () => {
     [AccountWalletType.PERPETUAL, AccountWalletType.FUNDING, 'UMFUTURE_FUNDING'],
     [AccountWalletType.SPOT, AccountWalletType.PERPETUAL, 'MAIN_UMFUTURE'],
     [AccountWalletType.PERPETUAL, AccountWalletType.SPOT, 'UMFUTURE_MAIN'],
+    [AccountWalletType.SPOT, AccountWalletType.COIN_M, 'MAIN_CMFUTURE'],
+    [AccountWalletType.COIN_M, AccountWalletType.SPOT, 'CMFUTURE_MAIN'],
+    [AccountWalletType.FUNDING, AccountWalletType.COIN_M, 'FUNDING_CMFUTURE'],
+    [AccountWalletType.COIN_M, AccountWalletType.MARGIN, 'CMFUTURE_MARGIN'],
+    [AccountWalletType.MARGIN, AccountWalletType.COIN_M, 'MARGIN_CMFUTURE'],
+    [AccountWalletType.SPOT, AccountWalletType.MARGIN, 'MAIN_MARGIN'],
+    [AccountWalletType.MARGIN, AccountWalletType.SPOT, 'MARGIN_MAIN'],
+    [AccountWalletType.PERPETUAL, AccountWalletType.MARGIN, 'UMFUTURE_MARGIN'],
+    [AccountWalletType.SPOT, AccountWalletType.OPTION, 'MAIN_OPTION'],
+    [AccountWalletType.OPTION, AccountWalletType.SPOT, 'OPTION_MAIN'],
+    [AccountWalletType.OPTION, AccountWalletType.PERPETUAL, 'OPTION_UMFUTURE'],
+    [AccountWalletType.MARGIN, AccountWalletType.OPTION, 'MARGIN_OPTION'],
+    [AccountWalletType.FUNDING, AccountWalletType.OPTION, 'FUNDING_OPTION'],
   ])('maps %s -> %s to universal transfer type %s', async (from, to, expectedType) => {
     const result = await exchange.transferFunds({
       asset: 'usdt',
@@ -378,6 +395,9 @@ describe('BinanceExchange transferFunds', () => {
       asset: 'USDT',
       amount: '50',
     });
+    // Only the isolated margin routes carry a pair.
+    expect(config.params.fromSymbol).toBeUndefined();
+    expect(config.params.toSymbol).toBeUndefined();
   });
 
   it('rejects a transfer when the source and destination wallets are the same', async () => {
@@ -389,6 +409,79 @@ describe('BinanceExchange transferFunds', () => {
         to: AccountWalletType.SPOT,
       }),
     ).rejects.toThrow(/must be different/);
+
+    expect(postSpy).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      AccountWalletType.SPOT,
+      AccountWalletType.ISOLATED_MARGIN,
+      'MAIN_ISOLATED_MARGIN',
+      'toSymbol',
+    ],
+    [
+      AccountWalletType.ISOLATED_MARGIN,
+      AccountWalletType.SPOT,
+      'ISOLATED_MARGIN_MAIN',
+      'fromSymbol',
+    ],
+    [
+      AccountWalletType.MARGIN,
+      AccountWalletType.ISOLATED_MARGIN,
+      'MARGIN_ISOLATEDMARGIN',
+      'toSymbol',
+    ],
+    [
+      AccountWalletType.ISOLATED_MARGIN,
+      AccountWalletType.MARGIN,
+      'ISOLATEDMARGIN_MARGIN',
+      'fromSymbol',
+    ],
+  ])(
+    'maps %s -> %s to %s and sends the pair as %s',
+    async (from, to, expectedType, symbolField) => {
+      await exchange.transferFunds({
+        asset: 'btc',
+        amount: new Decimal(0.5),
+        from,
+        to,
+        symbol: 'btcusdt',
+      });
+
+      const [, , config] = postSpy.mock.calls[0];
+      expect(config.params).toMatchObject({
+        type: expectedType,
+        asset: 'BTC',
+        amount: '0.5',
+        [symbolField]: 'BTCUSDT',
+      });
+    },
+  );
+
+  it('rejects an isolated margin transfer that does not name the pair', async () => {
+    await expect(
+      exchange.transferFunds({
+        asset: 'BTC',
+        amount: new Decimal(0.5),
+        from: AccountWalletType.SPOT,
+        to: AccountWalletType.ISOLATED_MARGIN,
+      }),
+    ).rejects.toThrow(/require the pair/);
+
+    expect(postSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects a pair Binance has no universal transfer type for', async () => {
+    // USDⓈ-M <-> COIN-M is a real gap in Binance's enum, not an oversight here.
+    await expect(
+      exchange.transferFunds({
+        asset: 'USDT',
+        amount: new Decimal(10),
+        from: AccountWalletType.PERPETUAL,
+        to: AccountWalletType.COIN_M,
+      }),
+    ).rejects.toThrow(/does not support transferring/);
 
     expect(postSpy).not.toHaveBeenCalled();
   });
@@ -510,5 +603,139 @@ describe('BinanceExchange Simple Earn (EARN wallet)', () => {
 
   it('lists EARN as transferable (via flexible subscribe/redeem)', () => {
     expect(exchange.getSupportedTransferWallets()).toContain(AccountWalletType.EARN);
+  });
+});
+
+describe('BinanceExchange COIN-M / margin / options wallets', () => {
+  let exchange: BinanceExchange;
+  let getSpy: any;
+  let coinGetSpy: any;
+
+  beforeEach(() => {
+    exchange = new BinanceExchange(false);
+    (exchange as any).credentials = {
+      apiKey: 'test-api-key',
+      secretKey: 'test-secret-key',
+    };
+
+    getSpy = vi.fn().mockResolvedValue({ data: {} });
+    coinGetSpy = vi.fn().mockResolvedValue({ data: [] });
+    (exchange as any).httpClient.get = getSpy;
+    (exchange as any).coinFuturesClient.get = coinGetSpy;
+  });
+
+  it('reads COIN-M balances from the /dapi host, not /fapi', async () => {
+    coinGetSpy.mockResolvedValue({
+      data: [{ asset: 'BTC', balance: '1.5', availableBalance: '1.25' }],
+    });
+
+    const balances = await exchange.getWalletBalances(AccountWalletType.COIN_M);
+
+    expect(coinGetSpy.mock.calls[0][0]).toBe('/dapi/v1/balance');
+    expect(getSpy).not.toHaveBeenCalled();
+    expect(balances).toHaveLength(1);
+    expect(balances[0].asset).toBe('BTC');
+    expect(balances[0].free.toString()).toBe('1.25');
+    expect(balances[0].locked.toString()).toBe('0.25');
+    expect(balances[0].total.toString()).toBe('1.5');
+  });
+
+  it('reads cross margin holdings from the margin account', async () => {
+    getSpy.mockResolvedValue({
+      data: {
+        userAssets: [
+          { asset: 'USDT', free: '100', locked: '10', borrowed: '500' },
+          { asset: 'BTC', free: '0.5', locked: '0' },
+        ],
+      },
+    });
+
+    const balances = await exchange.getWalletBalances(AccountWalletType.MARGIN);
+
+    expect(getSpy.mock.calls[0][0]).toBe('/sapi/v1/margin/account');
+    // Borrowed funds are not ours to move, so they are left out entirely.
+    expect(balances.find((b) => b.asset === 'USDT')?.total.toString()).toBe('110');
+    expect(balances.find((b) => b.asset === 'BTC')?.free.toString()).toBe('0.5');
+  });
+
+  it('narrows isolated margin balances to the requested pair', async () => {
+    getSpy.mockResolvedValue({
+      data: {
+        assets: [
+          {
+            symbol: 'BTCUSDT',
+            baseAsset: { asset: 'BTC', free: '0.25', locked: '0' },
+            quoteAsset: { asset: 'USDT', free: '1000', locked: '0' },
+          },
+          {
+            symbol: 'ETHUSDT',
+            baseAsset: { asset: 'ETH', free: '5', locked: '0' },
+            quoteAsset: { asset: 'USDT', free: '250', locked: '0' },
+          },
+        ],
+      },
+    });
+
+    const balances = await exchange.getWalletBalances(
+      AccountWalletType.ISOLATED_MARGIN,
+      'btcusdt',
+    );
+
+    expect(balances.map((b) => b.asset).sort()).toEqual(['BTC', 'USDT']);
+    expect(balances.find((b) => b.asset === 'USDT')?.total.toString()).toBe('1000');
+  });
+
+  it('aggregates isolated margin balances across pairs when no pair is given', async () => {
+    getSpy.mockResolvedValue({
+      data: {
+        assets: [
+          {
+            symbol: 'BTCUSDT',
+            baseAsset: { asset: 'BTC', free: '0.25', locked: '0' },
+            quoteAsset: { asset: 'USDT', free: '1000', locked: '0' },
+          },
+          {
+            symbol: 'ETHUSDT',
+            baseAsset: { asset: 'ETH', free: '5', locked: '1' },
+            quoteAsset: { asset: 'USDT', free: '250', locked: '0' },
+          },
+        ],
+      },
+    });
+
+    const balances = await exchange.getWalletBalances(AccountWalletType.ISOLATED_MARGIN);
+
+    expect(balances.find((b) => b.asset === 'USDT')?.total.toString()).toBe('1250');
+    expect(balances.find((b) => b.asset === 'ETH')?.locked.toString()).toBe('1');
+  });
+
+  it('fails loudly when the requested isolated margin pair does not exist', async () => {
+    getSpy.mockResolvedValue({ data: { assets: [] } });
+
+    await expect(
+      exchange.getWalletBalances(AccountWalletType.ISOLATED_MARGIN, 'BTCUSDT'),
+    ).rejects.toThrow(/no isolated margin account/);
+  });
+
+  it('lists the isolated margin pairs it can transfer against', async () => {
+    getSpy.mockResolvedValue({
+      data: {
+        assets: [
+          { symbol: 'ETHUSDT', isolatedCreated: true },
+          { symbol: 'BTCUSDT', isolatedCreated: true },
+          { symbol: 'SOLUSDT', isolatedCreated: false },
+        ],
+      },
+    });
+
+    expect(await exchange.getIsolatedMarginSymbols()).toEqual(['BTCUSDT', 'ETHUSDT']);
+  });
+
+  it('cannot report an options balance and says so', async () => {
+    // Binance's Options API has no balance endpoint at all. The wallet is still
+    // a valid transfer source, so this has to fail loudly rather than report 0.
+    await expect(exchange.getWalletBalances(AccountWalletType.OPTION)).rejects.toThrow(
+      /does not expose an Options wallet balance/,
+    );
   });
 });

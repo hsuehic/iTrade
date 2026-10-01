@@ -333,8 +333,8 @@ export interface Transfer {
 // account type "18" for both). Exchanges with genuinely separate Spot and
 // Perpetual wallets (Binance) use `SPOT` / `PERPETUAL` instead and never
 // report `TRADING`. Callers should use `getSupportedTransferWallets()` to
-// know which of these an exchange actually exposes rather than assuming all
-// four are valid.
+// know which of these an exchange actually exposes rather than assuming a
+// fixed set is valid.
 export enum AccountWalletType {
   FUNDING = 'FUNDING',
   SPOT = 'SPOT',
@@ -345,6 +345,18 @@ export enum AccountWalletType {
   // NOT part of any exchange's wallet-transfer enum, so connectors must route
   // Earn pairs separately (see BinanceExchange/OKXExchange.transferFunds).
   EARN = 'EARN',
+  // 🆕 The remaining wallets Binance's Universal Transfer API can move funds
+  // between. `PERPETUAL` above is USDⓈ-M (UMFUTURE) futures; COIN_M is COIN-M
+  // (CMFUTURE) delivery futures, which is a genuinely separate wallet with its
+  // own balance endpoint (dapi). MARGIN is the cross-margin account, OPTION the
+  // European options account. Exchanges that don't expose these never report
+  // them — keep using `getSupportedTransferWallets()` rather than assuming.
+  COIN_M = 'COIN_M',
+  MARGIN = 'MARGIN',
+  // Isolated margin is per-symbol (BTCUSDT, ETHUSDT, ...), so a transfer into
+  // or out of it must also carry the pair — see `TransferFundsParams.symbol`.
+  ISOLATED_MARGIN = 'ISOLATED_MARGIN',
+  OPTION = 'OPTION',
 }
 
 export interface TransferFundsParams {
@@ -352,6 +364,11 @@ export interface TransferFundsParams {
   amount: Decimal;
   from: AccountWalletType;
   to: AccountWalletType;
+  // 🆕 The isolated-margin pair (e.g. `BTCUSDT`) a transfer applies to.
+  // Required when either side is `ISOLATED_MARGIN` — that wallet holds one
+  // balance per pair, so `asset` alone cannot identify the position. Binance
+  // takes it as `fromSymbol` / `toSymbol` on the Universal Transfer call.
+  symbol?: string;
 }
 
 // 🆕 Returned by `IExchange.transferFunds`. `id` is the exchange's own
@@ -383,6 +400,9 @@ export interface InternalTransfer {
   amount: Decimal;
   fromWallet: AccountWalletType;
   toWallet: AccountWalletType;
+  // 🆕 The isolated-margin pair (e.g. BTCUSDT) a transfer applied to, when the
+  // route involved ISOLATED_MARGIN.
+  symbol?: string;
   status: TransferStatus;
   timestamp: Date;
   // The exchange's own transaction id, when its API returns one.

@@ -11,6 +11,7 @@ import {
   InternalTransfer,
   isTransferRouteSupported,
   supportsTransfers,
+  transferRouteNeedsSymbol,
   TransferStatus,
 } from '@itrade/core';
 import { AccountInfoEntity } from '@itrade/data-manager';
@@ -26,6 +27,7 @@ export {
   getSupportedTransferWallets,
   isTransferRouteSupported,
   supportsTransfers,
+  transferRouteNeedsSymbol,
 };
 export type { TransferRoute } from '@itrade/core';
 
@@ -67,6 +69,9 @@ export async function getWalletBalances(
   userId: string,
   accountId: number,
   walletType: AccountWalletType,
+  // 🆕 Only wallets that hold one balance per pair need this — today that is
+  // ISOLATED_MARGIN, where omitting it reports the account-wide total.
+  symbol?: string,
 ): Promise<SerializableBalance[]> {
   const account = await getOwnedAccount(userId, accountId);
 
@@ -86,8 +91,25 @@ export async function getWalletBalances(
     throw new Error(`${account.exchange} does not support wallet balance lookups`);
   }
 
-  const balances = await exchange.getWalletBalances(walletType);
+  const balances = await exchange.getWalletBalances(walletType, symbol);
   return serializeBalances(balances);
+}
+
+// 🆕 Isolated-margin pairs the account can transfer against. Exchanges without
+// an isolated margin product simply have none.
+export async function getIsolatedMarginSymbols(
+  userId: string,
+  accountId: number,
+): Promise<string[]> {
+  const account = await getOwnedAccount(userId, accountId);
+
+  const { exchange: connExchange } = await createExchangeConnection(account);
+  const exchange: IExchange = connExchange;
+  if (typeof exchange.getIsolatedMarginSymbols !== 'function') {
+    return [];
+  }
+
+  return exchange.getIsolatedMarginSymbols();
 }
 
 export interface TransferInput {
@@ -96,6 +118,9 @@ export interface TransferInput {
   amount: string | number;
   from: AccountWalletType;
   to: AccountWalletType;
+  // 🆕 Required when the route touches ISOLATED_MARGIN (see
+  // transferRouteNeedsSymbol) — that wallet holds one balance per pair.
+  symbol?: string;
 }
 
 export async function executeTransfer(
@@ -114,6 +139,14 @@ export async function executeTransfer(
 
   if (!isTransferRouteSupported(account.exchange, input.from, input.to)) {
     throw new Error(`${account.exchange} does not support this transfer route`);
+  }
+
+  // 🆕 Isolated margin keeps a separate balance per pair, so a route that
+  // touches it must say which pair. The connector re-checks this before it
+  // builds the request; catching it here keeps the error message UI-friendly.
+  const symbol = input.symbol?.trim().toUpperCase();
+  if (transferRouteNeedsSymbol(account.exchange, input.from, input.to) && !symbol) {
+    throw new Error('This transfer needs the isolated margin pair (e.g. BTCUSDT)');
   }
 
   if (!input.asset || !input.asset.trim()) {
@@ -137,6 +170,7 @@ export async function executeTransfer(
     amount,
     from: input.from,
     to: input.to,
+    symbol,
   });
 
   // 🆕 Record this in the SEPARATE internal_transfers table/entity (not the
@@ -158,6 +192,7 @@ export async function executeTransfer(
         amount,
         fromWallet: input.from,
         toWallet: input.to,
+        symbol,
         status: TransferStatus.COMPLETED,
         timestamp: new Date(),
         providerTransactionId: result?.id,

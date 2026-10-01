@@ -550,12 +550,20 @@
         "spot": "现货账户",
         "perpetual": "永续合约账户",
         "trading": "交易账户（现货与合约共用）",
-        "earn": "理财账户"
+        "earn": "理财账户",
+        "coinM": "币本位合约账户",
+        "margin": "杠杆账户",
+        "isolatedMargin": "逐仓杠杆账户",
+        "option": "期权账户"
       },
       "fields": {
         "from": "从",
         "to": "到",
         "selectWallet": "选择钱包",
+        "symbol": "逐仓交易对",
+        "selectSymbol": "选择交易对",
+        "loadingSymbols": "正在加载交易对...",
+        "symbolHint": "逐仓杠杆账户按交易对独立计价，划转时需指定交易对。",
         "asset": "币种",
         "assetPlaceholder": "USDT",
         "amount": "数量",
@@ -571,6 +579,7 @@
       },
       "errors": {
         "loadWalletsFailed": "加载该交易所钱包失败",
+        "loadSymbolsFailed": "加载逐仓交易对失败",
         "transferFailed": "划转失败"
       }
     },
@@ -1519,7 +1528,11 @@
         "SPOT": "现货账户",
         "PERPETUAL": "永续合约账户",
         "TRADING": "交易账户",
-        "EARN": "理财账户"
+        "EARN": "理财账户",
+        "COIN_M": "币本位合约账户",
+        "MARGIN": "杠杆账户",
+        "ISOLATED_MARGIN": "逐仓杠杆账户",
+        "OPTION": "期权账户"
       }
     },
     "balance": {
@@ -1684,7 +1697,11 @@
         "SPOT": "现货账户",
         "PERPETUAL": "永续合约账户",
         "TRADING": "交易账户",
-        "EARN": "理财账户"
+        "EARN": "理财账户",
+        "COIN_M": "币本位合约账户",
+        "MARGIN": "杠杆账户",
+        "ISOLATED_MARGIN": "逐仓杠杆账户",
+        "OPTION": "期权账户"
       },
       "status": {
         "COMPLETED": "已完成",

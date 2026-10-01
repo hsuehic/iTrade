@@ -550,12 +550,20 @@
         "spot": "Spot",
         "perpetual": "Perpetual",
         "trading": "Trading (Spot & Perpetual)",
-        "earn": "Earn"
+        "earn": "Earn",
+        "coinM": "COIN-M Futures",
+        "margin": "Cross Margin",
+        "isolatedMargin": "Isolated Margin",
+        "option": "Options"
       },
       "fields": {
         "from": "From",
         "to": "To",
         "selectWallet": "Select wallet",
+        "symbol": "Isolated margin pair",
+        "selectSymbol": "Select pair",
+        "loadingSymbols": "Loading pairs...",
+        "symbolHint": "Isolated margin keeps a separate balance per pair.",
         "asset": "Asset",
         "assetPlaceholder": "USDT",
         "amount": "Amount",
@@ -571,6 +579,7 @@
       },
       "errors": {
         "loadWalletsFailed": "Failed to load wallets for this exchange",
+        "loadSymbolsFailed": "Failed to load isolated margin pairs",
         "transferFailed": "Transfer failed"
       }
     },
@@ -1519,7 +1528,11 @@
         "SPOT": "Spot",
         "PERPETUAL": "Perpetual",
         "TRADING": "Trading",
-        "EARN": "Earn"
+        "EARN": "Earn",
+        "COIN_M": "COIN-M Futures",
+        "MARGIN": "Cross Margin",
+        "ISOLATED_MARGIN": "Isolated Margin",
+        "OPTION": "Options"
       }
     },
     "balance": {
@@ -1684,7 +1697,11 @@
         "SPOT": "Spot",
         "PERPETUAL": "Perpetual",
         "TRADING": "Trading",
-        "EARN": "Earn"
+        "EARN": "Earn",
+        "COIN_M": "COIN-M Futures",
+        "MARGIN": "Cross Margin",
+        "ISOLATED_MARGIN": "Isolated Margin",
+        "OPTION": "Options"
       },
       "status": {
         "COMPLETED": "Completed",

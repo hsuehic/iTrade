@@ -6,6 +6,7 @@ import {
   getSupportedTransferWallets,
   isTransferRouteSupported,
   supportsTransfers,
+  transferRouteNeedsSymbol,
 } from '@itrade/core';
 
 /**
@@ -19,9 +20,14 @@ describe('internal transfer routes', () => {
       AccountWalletType.FUNDING,
       AccountWalletType.SPOT,
       AccountWalletType.PERPETUAL,
+      AccountWalletType.COIN_M,
+      AccountWalletType.MARGIN,
+      AccountWalletType.OPTION,
+      AccountWalletType.ISOLATED_MARGIN,
       AccountWalletType.EARN,
     ]);
-    expect(getSupportedTransferRoutes('binance')).toHaveLength(8);
+    // 16 wallet pairs, each usable in both directions.
+    expect(getSupportedTransferRoutes('binance')).toHaveLength(32);
   });
 
   it('restricts OKX to Funding <-> Trading plus Trading <-> Earn', () => {
@@ -63,5 +69,87 @@ describe('internal transfer routes', () => {
     expect(supportsTransfers('Binance')).toBe(true);
     expect(supportsTransfers('coinbase')).toBe(false);
     expect(supportsTransfers('kraken')).toBe(false);
+  });
+
+  it('leaves out the pairs Binance has no universal transfer type for', () => {
+    expect(
+      isTransferRouteSupported(
+        'binance',
+        AccountWalletType.PERPETUAL,
+        AccountWalletType.COIN_M,
+      ),
+    ).toBe(false);
+    expect(
+      isTransferRouteSupported(
+        'binance',
+        AccountWalletType.COIN_M,
+        AccountWalletType.OPTION,
+      ),
+    ).toBe(false);
+    expect(
+      isTransferRouteSupported(
+        'binance',
+        AccountWalletType.FUNDING,
+        AccountWalletType.ISOLATED_MARGIN,
+      ),
+    ).toBe(false);
+
+    // ...while the pairs it does document are offered.
+    expect(
+      isTransferRouteSupported(
+        'binance',
+        AccountWalletType.COIN_M,
+        AccountWalletType.MARGIN,
+      ),
+    ).toBe(true);
+    expect(
+      isTransferRouteSupported(
+        'binance',
+        AccountWalletType.ISOLATED_MARGIN,
+        AccountWalletType.SPOT,
+      ),
+    ).toBe(true);
+  });
+
+  it('flags only the isolated margin routes as needing a pair', () => {
+    expect(
+      transferRouteNeedsSymbol(
+        'binance',
+        AccountWalletType.SPOT,
+        AccountWalletType.ISOLATED_MARGIN,
+      ),
+    ).toBe(true);
+    expect(
+      transferRouteNeedsSymbol(
+        'binance',
+        AccountWalletType.MARGIN,
+        AccountWalletType.ISOLATED_MARGIN,
+      ),
+    ).toBe(true);
+
+    // Everything else moves a whole wallet, so no pair is involved.
+    expect(
+      transferRouteNeedsSymbol(
+        'binance',
+        AccountWalletType.FUNDING,
+        AccountWalletType.SPOT,
+      ),
+    ).toBe(false);
+    expect(
+      transferRouteNeedsSymbol(
+        'okx',
+        AccountWalletType.FUNDING,
+        AccountWalletType.TRADING,
+      ),
+    ).toBe(false);
+
+    // A route that is not supported reports false rather than "needs a pair".
+    expect(
+      transferRouteNeedsSymbol(
+        'binance',
+        AccountWalletType.PERPETUAL,
+        AccountWalletType.ISOLATED_MARGIN,
+      ),
+    ).toBe(false);
   });
 });

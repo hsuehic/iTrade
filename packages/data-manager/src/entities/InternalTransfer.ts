@@ -63,6 +63,12 @@ export class InternalTransferEntity {
   })
   toWallet!: AccountWalletType;
 
+  // 🆕 The isolated-margin pair (e.g. BTCUSDT) this transfer applied to, when
+  // the route involved ISOLATED_MARGIN — that wallet holds one balance per
+  // pair, so asset + from/to wallet alone would not identify the position.
+  @Column({ type: 'character varying', length: 50, nullable: true })
+  symbol?: string;
+
   @Column({
     type: 'enum',
     enum: TransferStatus,

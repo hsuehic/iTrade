@@ -6,13 +6,21 @@ import { createExchangeConnection } from './order-execution-service';
 // 🆕 Wallets to query when building the per-wallet asset breakdown for the
 // portfolio assets page. This is intentionally a SUPERSET of the transfer
 // wallets in transfer-service.ts: EARN (Simple Earn/savings) holds assets but
-// can never be a transfer source/destination, and Coinbase supports balance
-// lookups (SPOT retail + PERPETUAL INTX) even though it has no transfer API.
+// is only reachable through subscribe/redeem rather than a wallet transfer, and
+// Coinbase supports balance lookups (SPOT retail + PERPETUAL INTX) even though
+// it has no transfer API. OPTION is deliberately absent — Binance exposes no
+// options balance endpoint at all (see BinanceExchange.getWalletBalances).
 const ASSET_WALLETS: Record<string, AccountWalletType[]> = {
   binance: [
     AccountWalletType.FUNDING,
     AccountWalletType.SPOT,
     AccountWalletType.PERPETUAL,
+    // COIN-M and the margin accounts hold real assets and have cheap balance
+    // lookups. ISOLATED_MARGIN is read without a pair here, i.e. as the total
+    // across every isolated pair the account has.
+    AccountWalletType.COIN_M,
+    AccountWalletType.MARGIN,
+    AccountWalletType.ISOLATED_MARGIN,
     AccountWalletType.EARN,
   ],
   okx: [AccountWalletType.FUNDING, AccountWalletType.TRADING, AccountWalletType.EARN],

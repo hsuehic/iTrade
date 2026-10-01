@@ -5,10 +5,18 @@ import { AccountWalletType } from './types';
  * exchange and expressed as *routes* rather than a flat wallet list — not every
  * pair of wallets is a real route.
  *
- * Binance keeps Funding, Spot, and Perpetual (USDⓈ-M futures) as three distinct
- * wallets and supports every pairwise combination through its Universal
- * Transfer API. Simple Earn is a separate product: only Spot <-> Earn is
- * possible, via the flexible subscribe/redeem endpoints.
+ * Binance keeps every account type as its own wallet and moves funds between
+ * them through a single "Universal Transfer" endpoint keyed by a `type` enum
+ * (see BinanceExchange.TRANSFER_TYPE_MAP). The pairs below are exactly the
+ * `type` values Binance documents, and the gaps are real, not oversights:
+ *
+ *   - USDⓈ-M <-> COIN-M (UMFUTURE <-> CMFUTURE) has no transfer type
+ *   - COIN-M <-> Options (CMFUTURE <-> OPTION) has no transfer type
+ *   - Funding / Options <-> Isolated Margin has no transfer type either; only
+ *     Spot and cross Margin can reach isolated margin
+ *
+ * Simple Earn is a separate product: only Spot <-> Earn is possible, via the
+ * flexible subscribe/redeem endpoints.
  *
  * OKX accounts in this app run in unified/multi-currency margin mode, so Spot
  * and Perpetual balances already live in the same "Trading" account — only
@@ -30,10 +38,25 @@ export const TRANSFER_ROUTES: Record<
 > = {
   // Every route below is bidirectional; only the forward direction is listed.
   binance: [
+    // Funding wallet pairs.
     [AccountWalletType.FUNDING, AccountWalletType.SPOT],
     [AccountWalletType.FUNDING, AccountWalletType.PERPETUAL],
+    [AccountWalletType.FUNDING, AccountWalletType.COIN_M],
+    [AccountWalletType.FUNDING, AccountWalletType.MARGIN],
+    [AccountWalletType.FUNDING, AccountWalletType.OPTION],
+    // Spot pairs (includes the isolated-margin routes, which need a pair).
     [AccountWalletType.SPOT, AccountWalletType.PERPETUAL],
+    [AccountWalletType.SPOT, AccountWalletType.COIN_M],
+    [AccountWalletType.SPOT, AccountWalletType.MARGIN],
+    [AccountWalletType.SPOT, AccountWalletType.OPTION],
+    [AccountWalletType.SPOT, AccountWalletType.ISOLATED_MARGIN],
     [AccountWalletType.SPOT, AccountWalletType.EARN],
+    // Derivative-account pairs.
+    [AccountWalletType.PERPETUAL, AccountWalletType.MARGIN],
+    [AccountWalletType.PERPETUAL, AccountWalletType.OPTION],
+    [AccountWalletType.COIN_M, AccountWalletType.MARGIN],
+    [AccountWalletType.MARGIN, AccountWalletType.OPTION],
+    [AccountWalletType.MARGIN, AccountWalletType.ISOLATED_MARGIN],
   ],
   okx: [
     [AccountWalletType.FUNDING, AccountWalletType.TRADING],
@@ -66,6 +89,26 @@ export function isTransferRouteSupported(
 ): boolean {
   return getSupportedTransferRoutes(exchange).some(
     (route) => route.from === from && route.to === to,
+  );
+}
+
+/**
+ * 🆕 Whether a supported route also needs the caller to name the isolated-margin
+ * pair (`TransferFundsParams.symbol`). Isolated margin holds one balance per
+ * pair, so asset + wallet cannot identify the position on its own.
+ *
+ * Returns false for routes that need no pair *and* for unsupported routes —
+ * validate the route separately with `isTransferRouteSupported`.
+ */
+export function transferRouteNeedsSymbol(
+  exchange: string,
+  from: AccountWalletType,
+  to: AccountWalletType,
+): boolean {
+  if (!isTransferRouteSupported(exchange, from, to)) return false;
+
+  return (
+    from === AccountWalletType.ISOLATED_MARGIN || to === AccountWalletType.ISOLATED_MARGIN
   );
 }
 

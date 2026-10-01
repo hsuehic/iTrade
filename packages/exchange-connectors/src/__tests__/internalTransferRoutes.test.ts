@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Decimal from 'decimal.js';
-import { AccountWalletType, getSupportedTransferWallets } from '@itrade/core';
+import {
+  AccountWalletType,
+  getSupportedTransferRoutes,
+  getSupportedTransferWallets,
+} from '@itrade/core';
 
 import { BinanceExchange } from '../binance/BinanceExchange';
 import { OKXExchange } from '../okx/OKXExchange';
@@ -208,5 +212,43 @@ describe('connector capability lists match the @itrade/core route table', () => 
     expect(new OKXExchange(false).getSupportedTransferWallets()).toEqual(
       getSupportedTransferWallets('okx'),
     );
+  });
+});
+
+/**
+ * Drift guard #2: every Binance route the core table advertises must actually
+ * build a request. A route added to the table without a matching
+ * TRANSFER_TYPE_MAP entry would otherwise only fail in production, the moment a
+ * user picks it in the form.
+ */
+describe('every advertised Binance route reaches the exchange', () => {
+  it('posts a universal transfer for each non-Earn route', async () => {
+    const exchange = new BinanceExchange(false);
+    (exchange as any).credentials = { apiKey: 'k', secretKey: 's' };
+
+    const postSpy = vi.fn().mockResolvedValue({ data: { tranId: 1 } });
+    (exchange as any).httpClient = { get: vi.fn(), post: postSpy };
+
+    const routes = getSupportedTransferRoutes('binance').filter(
+      (route) =>
+        route.from !== AccountWalletType.EARN && route.to !== AccountWalletType.EARN,
+    );
+    expect(routes.length).toBeGreaterThan(0);
+
+    for (const route of routes) {
+      postSpy.mockClear();
+
+      await exchange.transferFunds({
+        asset: 'USDT',
+        amount: new Decimal('1'),
+        from: route.from,
+        to: route.to,
+        // Ignored on the routes that do not take a pair.
+        symbol: 'BTCUSDT',
+      });
+
+      expect(postSpy).toHaveBeenCalledTimes(1);
+      expect(postSpy.mock.calls[0][0]).toBe('/sapi/v1/asset/transfer');
+    }
   });
 });

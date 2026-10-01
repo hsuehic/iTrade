@@ -775,6 +775,8 @@ export class TypeOrmDataManager implements IDataManager {
         amount: t.amount,
         fromWallet: t.fromWallet,
         toWallet: t.toWallet,
+        // Isolated margin transfers carry the pair; everything else leaves it null.
+        symbol: t.symbol,
         status: t.status,
         timestamp: t.timestamp,
         providerTransactionId: t.providerTransactionId,
@@ -839,6 +841,7 @@ export class TypeOrmDataManager implements IDataManager {
       amount: e.amount,
       fromWallet: e.fromWallet,
       toWallet: e.toWallet,
+      symbol: e.symbol,
       status: e.status,
       timestamp: e.timestamp,
       providerTransactionId: e.providerTransactionId,

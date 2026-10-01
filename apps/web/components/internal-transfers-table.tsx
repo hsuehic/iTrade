@@ -43,6 +43,9 @@ interface InternalTransfer {
   amount: { toString(): string };
   fromWallet: string;
   toWallet: string;
+  // 🆕 The isolated-margin pair, when the transfer touched one — that wallet
+  // holds one balance per pair, so the route alone is ambiguous.
+  symbol?: string;
   status: TransferStatus;
   timestamp: Date;
   providerTransactionId?: string;
@@ -185,23 +188,26 @@ export function InternalTransfersTable({
     return s;
   };
 
+  // Label lookup for the wallet columns. Kept as a plain map (rather than an
+  // if-chain over a hand-written union) so a newly added wallet type shows up as
+  // one line here instead of silently rendering as EARN-style raw text. Unknown
+  // values still fall back to the raw string: these rows come straight from the
+  // DB, so a value this build doesn't know about must not crash the table.
+  const WALLET_LABEL_KEYS = {
+    FUNDING: 'wallets.FUNDING',
+    SPOT: 'wallets.SPOT',
+    PERPETUAL: 'wallets.PERPETUAL',
+    TRADING: 'wallets.TRADING',
+    EARN: 'wallets.EARN',
+    COIN_M: 'wallets.COIN_M',
+    MARGIN: 'wallets.MARGIN',
+    ISOLATED_MARGIN: 'wallets.ISOLATED_MARGIN',
+    OPTION: 'wallets.OPTION',
+  } as const;
+
   const translateWallet = (wallet: string): string => {
-    const upper = wallet.toUpperCase();
-    if (
-      upper === 'FUNDING' ||
-      upper === 'SPOT' ||
-      upper === 'PERPETUAL' ||
-      upper === 'TRADING'
-    ) {
-      return t(
-        `wallets.${upper}` as
-          | 'wallets.FUNDING'
-          | 'wallets.SPOT'
-          | 'wallets.PERPETUAL'
-          | 'wallets.TRADING',
-      );
-    }
-    return wallet;
+    const key = WALLET_LABEL_KEYS[wallet.toUpperCase() as keyof typeof WALLET_LABEL_KEYS];
+    return key ? t(key) : wallet;
   };
 
   const hasActiveFilters =
@@ -365,6 +371,7 @@ export function InternalTransfersTable({
                       <TableCell className="text-muted-foreground whitespace-nowrap">
                         {translateWallet(transfer.fromWallet)} {'→'}{' '}
                         {translateWallet(transfer.toWallet)}
+                        {transfer.symbol ? ` (${transfer.symbol})` : ''}
                       </TableCell>
                       <TableCell className="text-right">
                         {transfer.amount.toString()}

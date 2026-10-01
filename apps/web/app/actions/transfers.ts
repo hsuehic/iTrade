@@ -23,6 +23,9 @@ export interface TransferFundsInput {
   amount: string;
   from: AccountWalletType;
   to: AccountWalletType;
+  // 🆕 Isolated-margin pair (e.g. BTCUSDT). Required when either side of the
+  // route is ISOLATED_MARGIN — see transferRouteNeedsSymbol.
+  symbol?: string;
 }
 
 export async function getTransferWallets(exchange: string): Promise<AccountWalletType[]> {
@@ -37,14 +40,34 @@ export async function getTransferRoutes(
   return transferService.getSupportedTransferRoutes(exchange);
 }
 
+// 🆕 Whether a route additionally needs the isolated-margin pair, so the form
+// knows when to ask for it.
+export async function getTransferRouteNeedsSymbol(
+  exchange: string,
+  from: AccountWalletType,
+  to: AccountWalletType,
+): Promise<boolean> {
+  return transferService.transferRouteNeedsSymbol(exchange, from, to);
+}
+
 export async function getWalletBalances(
   accountId: number,
   walletType: AccountWalletType,
+  symbol?: string,
 ): Promise<SerializableBalance[]> {
   const user = await getUser();
   if (!user) throw new Error('Unauthorized');
 
-  return transferService.getWalletBalances(user.id, accountId, walletType);
+  return transferService.getWalletBalances(user.id, accountId, walletType, symbol);
+}
+
+// 🆕 Isolated-margin pairs the account can transfer against (empty for accounts
+// whose exchange has no isolated margin product).
+export async function getIsolatedMarginSymbols(accountId: number): Promise<string[]> {
+  const user = await getUser();
+  if (!user) throw new Error('Unauthorized');
+
+  return transferService.getIsolatedMarginSymbols(user.id, accountId);
 }
 
 export async function transferFunds(input: TransferFundsInput) {

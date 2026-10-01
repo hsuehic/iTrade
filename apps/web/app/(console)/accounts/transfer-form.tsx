@@ -24,11 +24,12 @@ import {
 } from '@/components/ui/select';
 
 import {
+  getIsolatedMarginSymbols,
   getTransferRoutes,
   getWalletBalances,
   transferFunds,
 } from '@/app/actions/transfers';
-import { AccountWalletType, TransferRoute } from '@itrade/core';
+import { AccountWalletType, transferRouteNeedsSymbol, TransferRoute } from '@itrade/core';
 import {
   getExchangeDisplayName,
   SupportedExchange,
@@ -58,6 +59,10 @@ const WALLET_LABEL_KEY: Record<AccountWalletType, string> = {
   [AccountWalletType.PERPETUAL]: 'wallets.perpetual',
   [AccountWalletType.TRADING]: 'wallets.trading',
   [AccountWalletType.EARN]: 'wallets.earn',
+  [AccountWalletType.COIN_M]: 'wallets.coinM',
+  [AccountWalletType.MARGIN]: 'wallets.margin',
+  [AccountWalletType.ISOLATED_MARGIN]: 'wallets.isolatedMargin',
+  [AccountWalletType.OPTION]: 'wallets.option',
 };
 
 // 🆕 Dropdowns are driven by the routes @itrade/core declares for the exchange
@@ -83,6 +88,12 @@ export function TransferForm({
   const [amount, setAmount] = useState('');
   const [available, setAvailable] = useState<string | null>(null);
   const [balancesLoading, setBalancesLoading] = useState(false);
+  // 🆕 Isolated margin keeps one balance per pair, so a route that touches it
+  // also has to name the pair (e.g. BTCUSDT). The options are only fetched when
+  // some route actually asks for them.
+  const [symbol, setSymbol] = useState('');
+  const [symbolOptions, setSymbolOptions] = useState<string[]>([]);
+  const [symbolsLoading, setSymbolsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const initializedForRef = useRef<string | null>(null);
 
@@ -105,6 +116,8 @@ export function TransferForm({
     setAsset('');
     setAmount('');
     setAvailable(null);
+    setSymbol('');
+    setSymbolOptions([]);
 
     getTransferRoutes(accountExchange)
       .then(setRoutes)
@@ -118,10 +131,14 @@ export function TransferForm({
   useEffect(() => {
     setAvailable(null);
     if (!account || !from || !asset.trim()) return;
+    // Isolated margin has one balance per pair: until the pair is picked the
+    // connector would only report the total across every pair, which is not
+    // what the user can actually move out of.
+    if (from === AccountWalletType.ISOLATED_MARGIN && !symbol) return;
 
     let cancelled = false;
     setBalancesLoading(true);
-    getWalletBalances(account.id, from)
+    getWalletBalances(account.id, from, symbol || undefined)
       .then((balances) => {
         if (cancelled) return;
         const match = balances.find(
@@ -139,7 +156,44 @@ export function TransferForm({
     return () => {
       cancelled = true;
     };
-  }, [account, from, asset]);
+  }, [account, from, asset, symbol]);
+
+  // 🆕 Isolated margin balances are per pair, so a transfer that touches it only
+  // becomes submittable once the pair is chosen. The rule lives in @itrade/core
+  // (transferRouteNeedsSymbol) and is re-checked server-side.
+  const isolatedRoute =
+    !!from && !!to && transferRouteNeedsSymbol(accountExchange ?? '', from, to);
+  // Show the pair picker as soon as isolated margin is on *either* side, so the
+  // wallet can be addressed before the other side is picked. Only Binance routes
+  // ever contain ISOLATED_MARGIN and `routes` is sourced per exchange, so an
+  // OKX/Coinbase account cannot get here with a stale selection.
+  const showSymbolField =
+    from === AccountWalletType.ISOLATED_MARGIN ||
+    to === AccountWalletType.ISOLATED_MARGIN;
+
+  useEffect(() => {
+    if (!open || !accountId || !showSymbolField || symbolOptions.length > 0) return;
+
+    let cancelled = false;
+    setSymbolsLoading(true);
+    getIsolatedMarginSymbols(accountId)
+      .then((symbols) => {
+        if (!cancelled) setSymbolOptions(symbols);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSymbolOptions([]);
+          toast.error(t('errors.loadSymbolsFailed'));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSymbolsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, accountId, showSymbolField, symbolOptions.length, t]);
 
   if (!account) return null;
 
@@ -149,7 +203,14 @@ export function TransferForm({
     : [];
 
   const canSubmit =
-    !!from && !!to && from !== to && !!asset.trim() && !!amount && Number(amount) > 0;
+    !!from &&
+    !!to &&
+    from !== to &&
+    !!asset.trim() &&
+    !!amount &&
+    Number(amount) > 0 &&
+    // Isolated margin routes are incomplete without the pair.
+    (!isolatedRoute || !!symbol);
 
   async function handleSubmit() {
     if (!account || !from || !to) return;
@@ -161,6 +222,9 @@ export function TransferForm({
         amount,
         from,
         to,
+        // Only carry the pair when this route actually uses it, so stale state
+        // from an earlier isolated-margin selection can't ride along.
+        symbol: isolatedRoute ? symbol : undefined,
       });
       toast.success(t('messages.success'));
       onSuccess();
@@ -235,6 +299,35 @@ export function TransferForm({
               </Select>
             </div>
           </div>
+
+          {showSymbolField && (
+            <div className="space-y-2">
+              <Label>{t('fields.symbol')}</Label>
+              <Select
+                value={symbol || undefined}
+                onValueChange={setSymbol}
+                disabled={symbolsLoading}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue
+                    placeholder={
+                      symbolsLoading
+                        ? t('fields.loadingSymbols')
+                        : t('fields.selectSymbol')
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent container={false}>
+                  {symbolOptions.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">{t('fields.symbolHint')}</p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>{t('fields.asset')}</Label>
