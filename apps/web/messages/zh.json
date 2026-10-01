@@ -2115,6 +2115,44 @@
         "exceedsMaxReduce": "金额超过最多可减少保证金（{amount} {asset}）",
         "adjustFailed": "调整保证金失败"
       }
+    },
+    "tradeMode": {
+      "button": "交易模式",
+      "title": "设置合约交易模式",
+      "description": "在交易所把永续合约交易对切换为逐仓或全仓。该交易对必须已平仓且没有挂单。",
+      "fields": {
+        "exchange": "交易所",
+        "pair": "永续交易对",
+        "mode": "保证金模式"
+      },
+      "placeholders": {
+        "exchange": "选择交易所",
+        "pair": "选择永续交易对"
+      },
+      "modes": {
+        "isolated": "逐仓 (Isolated)",
+        "cross": "全仓 (Cross)"
+      },
+      "currentMode": "当前模式：{mode}",
+      "currentModeLoading": "正在读取当前模式…",
+      "currentModeUnknown": "当前模式：未知",
+      "actions": {
+        "cancel": "取消",
+        "confirm": "切换模式",
+        "submitting": "切换中..."
+      },
+      "messages": {
+        "changed": "保证金模式已切换为 {mode}",
+        "alreadySet": "该交易对已经是 {mode} 模式"
+      },
+      "errors": {
+        "loadExchanges": "加载交易所失败",
+        "noExchanges": "没有已连接的 Binance 账户。只有 Binance 提供切换永续合约保证金模式的 API —— OKX 的模式由每笔订单决定，Coinbase 永续只有全仓。",
+        "noPairs": "该交易所没有可用的永续交易对",
+        "positionOpen": "该交易对仍有持仓，请先平仓并撤销挂单后再切换保证金模式。",
+        "openOrders": "该交易对仍有挂单，请先撤单后再切换保证金模式。",
+        "switchFailed": "切换保证金模式失败"
+      }
     }
   },
   "helpBot": {

@@ -25,6 +25,8 @@ import {
   TransferStatus,
   MarginAdjustmentResult,
   IsolatedMarginLimits,
+  MarginModeSwitchResult,
+  MarginModeSwitchError,
   AccountWalletType,
   TransferFundsParams,
   TransferFundsResult,
@@ -615,6 +617,103 @@ export class BinanceExchange extends BaseExchange {
       currentMargin: isolatedWallet,
       marginAsset,
     };
+  }
+
+  /**
+   * 🆕 Current margin mode of a perpetual symbol via
+   * `GET /fapi/v2/positionRisk?symbol=...`. Binance reports `marginType` per
+   * symbol whether or not it currently holds a position, so this also answers
+   * "which mode would the next order use". Returns null when the account has
+   * no risk entry for the symbol or the value is unrecognised.
+   */
+  public async getMarginMode(symbol: string): Promise<'isolated' | 'cross' | null> {
+    const normalizedSymbol = this.normalizeSymbol(symbol);
+    const signedParams = this.signRequest({
+      symbol: normalizedSymbol,
+      timestamp: Date.now(),
+    });
+    const response = await this.futuresClient.get('/fapi/v2/positionRisk', {
+      params: signedParams,
+    });
+
+    const entry = (response.data as any[]).find((pos) => pos.symbol === normalizedSymbol);
+    const marginType = String(entry?.marginType ?? '').toLowerCase();
+    if (marginType === 'isolated') return 'isolated';
+    if (marginType === 'cross') return 'cross';
+    return null;
+  }
+
+  /**
+   * 🆕 Manual margin-mode switch for a perpetual symbol via
+   * `POST /fapi/v1/marginType` — the same endpoint the strategy path asserts
+   * on (see setMarginType), but here a refusal MUST be reported instead of
+   * logged: the operator asked for it explicitly. Binance answers -4048 while
+   * the symbol still holds a position, -4047 while it still has open orders,
+   * and -4046 when it already sits in the requested mode (surfaced as
+   * `changed: false`, not an error).
+   */
+  public async setMarginMode(
+    symbol: string,
+    marginMode: 'isolated' | 'cross',
+  ): Promise<MarginModeSwitchResult> {
+    const normalizedSymbol = this.normalizeSymbol(symbol);
+    const binanceMarginType = marginMode === 'cross' ? 'CROSSED' : 'ISOLATED';
+
+    try {
+      const signedParams = this.signRequest({
+        symbol: normalizedSymbol,
+        marginType: binanceMarginType,
+        timestamp: Date.now(),
+      });
+      await this.futuresClient.post('/fapi/v1/marginType', null, {
+        params: signedParams,
+      });
+      // The symbol is on the requested mode now, so a *future* rejection on the
+      // strategy path deserves a fresh warning.
+      this.marginTypeWarned.delete(`${normalizedSymbol}:${binanceMarginType}`);
+      return { symbol, marginMode, changed: true };
+    } catch (error: any) {
+      const code = error.response?.data?.code;
+      const message =
+        error.response?.data?.msg ??
+        (error instanceof Error ? error.message : 'unknown error');
+      const exchangeCode = code === undefined || code === null ? undefined : String(code);
+      const httpStatus =
+        typeof error.response?.status === 'number' ? error.response.status : undefined;
+
+      // -4046: already in the requested mode. Expected, not a failure.
+      if (code === -4046) {
+        this.marginTypeWarned.delete(`${normalizedSymbol}:${binanceMarginType}`);
+        return { symbol, marginMode, changed: false };
+      }
+
+      if (code === -4047) {
+        throw new MarginModeSwitchError(
+          'open-orders',
+          `Binance refused the margin-mode switch for ${normalizedSymbol}: the symbol still has open orders (code -4047: ${message})`,
+          exchangeCode,
+          httpStatus,
+        );
+      }
+
+      if (code === -4048) {
+        throw new MarginModeSwitchError(
+          'position-open',
+          `Binance refused the margin-mode switch for ${normalizedSymbol}: the symbol still has a position (code -4048: ${message})`,
+          exchangeCode,
+          httpStatus,
+        );
+      }
+
+      throw new MarginModeSwitchError(
+        'unknown',
+        `Binance rejected the margin-mode switch for ${normalizedSymbol} (code ${
+          exchangeCode ?? 'n/a'
+        }: ${message})`,
+        exchangeCode,
+        httpStatus,
+      );
+    }
   }
 
   /**

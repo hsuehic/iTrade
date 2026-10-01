@@ -2115,6 +2115,44 @@
         "exceedsMaxReduce": "Amount exceeds the maximum reducible margin ({amount} {asset})",
         "adjustFailed": "Failed to adjust margin"
       }
+    },
+    "tradeMode": {
+      "button": "Trade Mode",
+      "title": "Set Perpetual Margin Mode",
+      "description": "Switch a perpetual pair between isolated and cross margin on the exchange. The pair must be flat and have no open orders.",
+      "fields": {
+        "exchange": "Exchange",
+        "pair": "Perpetual Pair",
+        "mode": "Margin Mode"
+      },
+      "placeholders": {
+        "exchange": "Select exchange",
+        "pair": "Select perpetual pair"
+      },
+      "modes": {
+        "isolated": "Isolated",
+        "cross": "Cross"
+      },
+      "currentMode": "Current mode: {mode}",
+      "currentModeLoading": "Reading current mode…",
+      "currentModeUnknown": "Current mode: unknown",
+      "actions": {
+        "cancel": "Cancel",
+        "confirm": "Switch Mode",
+        "submitting": "Switching..."
+      },
+      "messages": {
+        "changed": "Margin mode switched to {mode}",
+        "alreadySet": "The pair was already in {mode} mode"
+      },
+      "errors": {
+        "loadExchanges": "Failed to load your exchanges",
+        "noExchanges": "No Binance account is connected. Binance is the only venue whose API can switch a perpetual's margin mode — OKX sets it per order and Coinbase perps are cross-only.",
+        "noPairs": "No perpetual pair available for this exchange",
+        "positionOpen": "This pair still has an open position. Close the position and cancel its open orders before switching the margin mode.",
+        "openOrders": "This pair still has open orders. Cancel them before switching the margin mode.",
+        "switchFailed": "Failed to switch the margin mode"
+      }
     }
   },
   "helpBot": {

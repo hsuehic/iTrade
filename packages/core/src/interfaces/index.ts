@@ -34,6 +34,7 @@ import {
   Transfer,
   MarginAdjustmentResult,
   IsolatedMarginLimits,
+  MarginModeSwitchResult,
   AccountWalletType,
   TransferFundsParams,
   TransferFundsResult,
@@ -118,6 +119,26 @@ export interface IExchange extends EventEmitter {
     symbol: string,
     positionSide?: 'long' | 'short',
   ): Promise<IsolatedMarginLimits>;
+
+  // 🆕 Switch a perpetual symbol between cross and isolated margin (manual,
+  // operator-driven — not part of order placement). Optional: implemented by
+  // Binance only. OKX exposes no endpoint that switches an instrument's
+  // margin mode (the mode follows the `tdMode` each order carries, which the
+  // OKX connector asserts on every perpetual order) and Coinbase perps are
+  // cross-only on this platform, so callers must check
+  // `typeof exchange.setMarginMode === 'function'` before use.
+  // Unlike the never-throwing strategy-side margin-type assertion, this one
+  // throws `MarginModeSwitchError` so the UI can report why the exchange
+  // refused (typically 'position-open' / 'open-orders').
+  setMarginMode?(
+    symbol: string,
+    marginMode: 'isolated' | 'cross',
+  ): Promise<MarginModeSwitchResult>;
+
+  // 🆕 Best-effort read of a perpetual symbol's current margin mode. Optional
+  // — returns null when the exchange cannot report it (e.g. OKX only reports
+  // a mode for a symbol that has an open position).
+  getMarginMode?(symbol: string): Promise<'isolated' | 'cross' | null>;
 
   // 🆕 Internal wallet-to-wallet transfer (Funding / Spot / Perpetual / unified
   // Trading wallet, plus the Binance-only COIN-M, cross/isolated margin and

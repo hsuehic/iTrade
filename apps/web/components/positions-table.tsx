@@ -16,6 +16,7 @@ import {
   IconChevronRight,
   IconPlus,
   IconMinus,
+  IconAdjustments,
 } from '@tabler/icons-react';
 import {
   ColumnDef,
@@ -51,6 +52,7 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { TradeModeDialog } from '@/components/trade-mode-dialog';
 import {
   Table,
   TableBody,
@@ -155,6 +157,7 @@ export function PositionsTable({
     marginAsset: string;
   } | null>(null);
   const [isLoadingMarginLimits, setIsLoadingMarginLimits] = React.useState(false);
+  const [isTradeModeDialogOpen, setIsTradeModeDialogOpen] = React.useState(false);
 
   const getSideLabel = React.useCallback(
     (side: string) =>
@@ -784,6 +787,21 @@ export function PositionsTable({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Mounted only while open so the pair list / accounts are fetched on demand. */}
+      {isTradeModeDialogOpen && (
+        <TradeModeDialog
+          open={isTradeModeDialogOpen}
+          onOpenChange={setIsTradeModeDialogOpen}
+          positions={positions.map((position) => ({
+            exchange: position.exchange,
+            symbol: position.symbol,
+          }))}
+          defaultExchange={
+            selectedFilterExchange === 'all' ? undefined : selectedFilterExchange
+          }
+          onSwitched={fetchData}
+        />
+      )}
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
         <div className="flex flex-col gap-1">
           <CardTitle>{t('title')}</CardTitle>
@@ -812,6 +830,14 @@ export function PositionsTable({
               })}
             </span>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsTradeModeDialogOpen(true)}
+          >
+            <IconAdjustments className="h-4 w-4" />
+            <span className="ml-1 hidden sm:inline">{t('tradeMode.button')}</span>
+          </Button>
           <Button variant="outline" size="sm" onClick={fetchData}>
             <IconRefresh className="h-4 w-4" />
           </Button>

@@ -16,7 +16,8 @@ export type AuditLogAction =
   | 'order.create'
   | 'order.update'
   | 'order.cancel'
-  | 'position.adjustMargin';
+  | 'position.adjustMargin'
+  | 'exchange.setTradeMode';
 
 /**
  * Audit trail for admin actions taken on/as another user's account

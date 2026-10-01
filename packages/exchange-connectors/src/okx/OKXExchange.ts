@@ -1184,6 +1184,57 @@ export class OKXExchange extends BaseExchange {
     };
   }
 
+  /**
+   * 🆕 Margin mode a perpetual instrument is currently booked in. OKX only
+   * reports this for an instrument that HAS a position (`mgnMode` on the
+   * position), so a flat symbol returns null — there is no account-level
+   * "setting" to read back until the next order establishes one.
+   *
+   * Read-only and never reached by the trade-mode flow (OKX is not offered for
+   * a switch — see `apps/web/lib/trade-mode.ts`); kept so a future direct
+   * caller can inspect the mode without opening a position.
+   */
+  public async getMarginMode(symbol: string): Promise<'isolated' | 'cross' | null> {
+    const instId = this.normalizeSymbol(symbol);
+    // instType is required on this endpoint — the mode is read off a SWAP
+    // position, so only SWAP is queried.
+    const signed = this.signOKXRequest('GET', '/api/v5/account/positions', {
+      instType: 'SWAP',
+      instId,
+    });
+    const response = await this.httpClient.get(signed.endpoint, {
+      headers: signed.headers,
+    });
+
+    if (response.data.code !== '0') {
+      return null;
+    }
+
+    // Any posSide: in net mode the position carries posSide 'net', in hedge
+    // mode it is split into 'long' / 'short' — both report the mode.
+    const position = (response.data.data as any[])?.find(
+      (pos) =>
+        pos.instId === instId &&
+        this.formatDecimal((pos.pos ?? '0').toString())
+          .abs()
+          .gt(0),
+    );
+
+    const marginMode = String(position?.mgnMode ?? '').toLowerCase();
+    if (marginMode === 'isolated') return 'isolated';
+    if (marginMode === 'cross') return 'cross';
+    return null;
+  }
+
+  // NOTE: OKX deliberately has no `setMarginMode`. OKX exposes no endpoint
+  // that switches a perpetual instrument between cross and isolated margin:
+  // the mode follows the `tdMode` carried by each order (which this connector
+  // asserts on every perpetual order — see createOrder), and
+  // `POST /api/v5/account/set-leverage` only writes the leverage recorded for
+  // a given `mgnMode`, without changing which mode the instrument is on. The
+  // web trade-mode dialog therefore offers Binance only; see
+  // docs/development/TRADE_MODE_LEVERAGE_IMPLEMENTATION.md.
+
   public async getExchangeInfo(): Promise<ExchangeInfo> {
     // Fetch SPOT and SWAP instruments
     const [spotRes, swapRes] = await Promise.all([

@@ -694,16 +694,70 @@ OKX connector defaults to `ISOLATED` — hence a Binance-only drift.
    in place. Later partial order updates never clear the columns (`OrderRepository.save`
    upserts only the columns it is given).
 
-**Out of scope / manual.** An existing position's margin mode cannot be switched
-through this path: Binance requires the symbol to have no position and no open
-orders. Cross positions already open (e.g. WLDUSDC) are switched by hand on the
-exchange; the position page has no margin-mode editor.
-
 **Deploy note.** Both columns are additive and `orders` is large, so the columns
 arrive via the CD schema sync (`schema_check` in `.github/workflows/deploy.yml`
 triggers the schema-migrator for changes under `packages/<pkg>/src/entities/`)
 before the app containers are recreated. TypeORM selects every mapped column, so
 app code deployed ahead of the sync would fail on a missing column.
+
+**Out of scope / manual (unchanged).** The strategy path still never switches an
+existing position's margin mode: Binance requires the symbol to have no position
+and no open orders. Cross positions already open (e.g. WLDUSDC) are switched
+through the position-page dialog below (or by hand on the exchange).
+
+## Manual Margin-Mode Switch from the Position Page (2026-10-02)
+
+Operators needed a way to fix a drifted mode (WLDUSDC was left `cross` by the
+cache bug above) without leaving the console. The position page toolbar now has a
+**Trade Mode** button that opens a three-step dialog: **exchange → perpetual pair
+→ mode**.
+
+**Guard rails (the point of the feature).** A symbol can only be switched while it
+is flat and free of resting orders, so the dialog warns and blocks the submit as
+soon as the selected pair appears in the page's open positions ("close the
+position and cancel its open orders first"), and the API re-checks server-side
+before touching the exchange:
+
+| Check                                                     | Layer                               | Result on failure                       |
+| --------------------------------------------------------- | ----------------------------------- | --------------------------------------- |
+| Open position for the pair (stored row)                   | `trade-mode-service`                | `409 position-open`                     |
+| Open position for the pair (live, `getPositions`)         | `trade-mode-service`                | `409 position-open`                     |
+| Live open orders for the symbol (`getOpenOrders(symbol)`) | `trade-mode-service`                | `409 open-orders`                       |
+| Exchange refusal (`-4048` / `-4047`)                      | connector → `MarginModeSwitchError` | `409 position-open` / `409 open-orders` |
+| Exchange credentials (HTTP 401)                           | API route                           | `401`                                   |
+| Everything else                                           | API route                           | `502` with the exchange message         |
+
+The stored row is checked first (cheap) and the live positions/orders second, so a
+stale DB row can only ever refuse a switch — it cannot let a request through. The
+stored lookup matches the unified symbol the endpoint also accepts
+(`BASE/QUOTE:SETTLE`, e.g. `WLD/USDC:USDC` — the form the positions table stores), and
+the two live checks compare canonically (`lib/trade-mode.ts` collapses `WLDUSDC` and
+`WLD/USDC:USDC`), so a raw symbol coming back from a connector cannot silently disable
+a guard. The endpoint deliberately accepts unified perpetual symbols only: a raw
+`WLDUSDC` is refused as `400 not-perpetual` rather than guessed at. The exchange stays
+the final authority: a rejection that still arrives is classified the same way by the
+connector. Note that `getPositions()` swallows fetch errors and returns `[]`, so a
+failing position read cannot block a legitimate switch — Binance's own
+`-4048`/`-4047` remain the backstop; that residual gap is accepted rather than hidden.
+The switch is never forced: nothing closes a position or cancels an order on the
+operator's behalf.
+
+**Per-exchange mechanism.**
+
+| Exchange | Read current mode                                                                                  | Switch                                              | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| -------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Binance  | `GET /fapi/v2/positionRisk?symbol=` → `marginType` (reported for flat symbols too)                 | `POST /fapi/v1/marginType` (`CROSSED` / `ISOLATED`) | `-4046` (already in that mode) is returned as `changed: false`, not an error; a successful switch clears the strategy-path warning flag for that symbol                                                                                                                                                                                                                                                                                                                                                                 |
+| OKX      | `GET /api/v5/account/positions?instType=SWAP&instId=` → `mgnMode` — **null for a flat instrument** | **Not offered**                                     | OKX exposes no endpoint that switches an instrument's margin mode. The mode follows the `tdMode` each order carries (which the OKX connector asserts on every perpetual order); `POST /api/v5/account/set-leverage` only writes the leverage recorded for a given `mgnMode`, which is not a mode switch and cannot honestly report one, and reusing the opposite mode's leverage would silently re-lever the instrument. The connector therefore has **no** `setMarginMode`; only the read-only `getMarginMode` is kept |
+| Coinbase | —                                                                                                  | **Not offered**                                     | No margin-mode switch endpoint on the API this connector talks to. Its order path sends `margin_type: 'ISOLATED'` on every perpetual order while position reads hardcode `marginType: 'cross'` (Coinbase International's own semantics), so there is no mode the platform could read back or switch                                                                                                                                                                                                                     |
+
+**Surfaces.** `IExchange.setMarginMode?` (Binance only) and `IExchange.getMarginMode?`
+(Binance + OKX) are optional members → `apps/web/lib/services/trade-mode-service.ts`
+(`setSymbolTradeMode` / `getSymbolTradeMode`, `TRADE_MODE_EXCHANGES = ['binance']`) →
+`POST|GET /api/exchange/trade-mode` → `apps/web/components/trade-mode-dialog.tsx`,
+mounted from the position page table toolbar. Unlike the never-throwing strategy
+path, this path throws `MarginModeSwitchError` with a classified `reason` so the UI
+can report the real cause. Impersonated switches are recorded in `audit_logs`
+(`exchange.setTradeMode`).
 
 ## References
 

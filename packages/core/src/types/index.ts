@@ -299,6 +299,54 @@ export interface IsolatedMarginLimits {
   marginAsset: string;
 }
 
+// 🆕 Result of a manual cross/isolated margin-mode switch for a perpetual
+// symbol (`IExchange.setMarginMode`). `changed` is false when the exchange
+// reported that the symbol already sits in the requested mode, so callers can
+// tell "switched" from "was already there" without a second query.
+export interface MarginModeSwitchResult {
+  symbol: string;
+  marginMode: 'isolated' | 'cross';
+  changed: boolean;
+}
+
+// 🆕 Why a margin-mode switch could not be applied. 'position-open' and
+// 'open-orders' are Binance-imposed preconditions (codes -4048 / -4047): it
+// refuses the switch until the symbol is flat AND has no resting orders, so
+// callers surface them as "close the position / cancel the orders first".
+// 'unsupported' means the adapter has no such capability at all — OKX exposes
+// no margin-mode switch endpoint (its perp mode follows each order's `tdMode`)
+// and Coinbase perps are cross-only, so neither is offered to the operator.
+export type MarginModeSwitchReason =
+  | 'position-open'
+  | 'open-orders'
+  | 'unsupported'
+  | 'unknown';
+
+/**
+ * 🆕 Thrown by `IExchange.setMarginMode` when the exchange refuses or fails
+ * the switch. Carries a classified `reason` for user-facing copy plus the
+ * exchange's own error code/message, so the web layer can show the real cause
+ * instead of a generic "failed to switch" (the strategy-side `setMarginType`
+ * stays never-throwing — this is the operator-driven, must-report path).
+ */
+export class MarginModeSwitchError extends Error {
+  constructor(
+    public readonly reason: MarginModeSwitchReason,
+    message: string,
+    public readonly exchangeCode?: string,
+    /**
+     * HTTP status of the underlying exchange response, when there was one.
+     * Kept on the error so the web layer can still tell a credential problem
+     * (401) from a genuine exchange failure after the connector has wrapped the
+     * original error.
+     */
+    public readonly httpStatus?: number,
+  ) {
+    super(message);
+    this.name = 'MarginModeSwitchError';
+  }
+}
+
 // Account Types
 export interface AccountInfo {
   balances: Balance[];
