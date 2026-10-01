@@ -99,7 +99,16 @@ export function SymbolSelector({
             placeholder={t('inbox.searchPlaceholder') || 'Search...'}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              // Swallow ONLY the single character keys Radix would consume as
+              // typeahead in the menu — it would otherwise jump focus onto a
+              // matching row while the query is still being typed. A blanket
+              // stopPropagation also suppressed the `preventDefault` Radix applies
+              // to Tab inside the menu, so Tab walked focus out of the open menu.
+              const isTypeaheadKey =
+                e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey;
+              if (isTypeaheadKey) e.stopPropagation();
+            }}
             className="flex h-8 w-full rounded-md bg-transparent py-2 text-sm outline-none border-none focus-visible:ring-0 px-0"
           />
         </div>

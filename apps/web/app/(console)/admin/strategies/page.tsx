@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SiteHeader } from '@/components/site-header';
+import { UserSelector } from '@/components/strategy/user-selector';
 import { SidebarInset } from '@/components/ui/sidebar';
 import {
   Card,
@@ -60,7 +61,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
 } from '@tabler/icons-react';
-import { SUPPORTED_EXCHANGES } from '@/lib/exchanges';
+import { SUPPORTED_EXCHANGES, getExchangeInfo } from '@/lib/exchanges';
 import { MAX_STRATEGY_NAME_LENGTH } from '@/lib/admin-strategy-validation';
 import { toast } from 'sonner';
 
@@ -215,8 +216,11 @@ export default function AdminStrategiesPage() {
     // Two distinct needs:
     //  - the owner FILTER only offers users with a bound exchange account
     //    (`/api/admin/strategies/owners` — one query, no avatars);
-    //  - the CLONE dialog needs any user, but only id/name/email
-    //    (`basic=1` strips the multi-MB base64 avatars).
+    //  - the CLONE dialog offers the same candidate set: a target user without
+    //    an exchange account can only ever receive a dead STOPPED clone, so
+    //    listing them just invites the mistake. `/api/admin/users` (`basic=1`,
+    //    multi-MB base64 avatars stripped) stays the fallback source when the
+    //    owners lookup fails.
     // The tenant has well under 1000 users, so one page is enough — no paging.
     const [ownersRes, usersRes] = await Promise.allSettled([
       fetch('/api/admin/strategies/owners', { cache: 'no-store' }),
@@ -273,14 +277,6 @@ export default function AdminStrategiesPage() {
   // Owner filter options: only users with a bound exchange account. Falls back
   // to every user when the owners lookup failed (toast explains why).
   const ownerOptions = useMemo(() => boundUsers ?? users, [boundUsers, users]);
-
-  // For the clone dialog: which users are known to have an exchange account
-  // (null when the lookup failed — the dialog then stays silent rather than
-  // warning on incomplete data).
-  const boundUserIds = useMemo(
-    () => (boundUsers ? new Set(boundUsers.map((u) => u.id)) : null),
-    [boundUsers],
-  );
 
   const fetchStrategies = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -629,25 +625,20 @@ export default function AdminStrategiesPage() {
                   onChange={(e) => setSymbol(e.target.value)}
                 />
 
-                <Select
-                  value={ownerId}
+                <UserSelector
+                  value={ownerId === 'all' ? '' : ownerId}
                   onValueChange={(v) => {
-                    setOwnerId(v);
+                    // '' is the picker's "no user" value; the table's filter uses
+                    // 'all' for the same state (see the userId param below).
+                    setOwnerId(v || 'all');
                     setPage(1);
                   }}
-                >
-                  <SelectTrigger className="w-[180px]" disabled={!ownersLoaded}>
-                    <SelectValue placeholder="Owner" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Owners</SelectItem>
-                    {ownerOptions.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.name || u.email || u.id}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  users={ownerOptions}
+                  allOptionLabel="All Owners"
+                  placeholder="Owner"
+                  disabled={!ownersLoaded}
+                  triggerClassName="h-9 w-[180px]"
+                />
                 {/* Owner filter only offers users with a bound exchange account —
                     hidden in the degraded state, where every user is listed. */}
                 {boundUsers && (
@@ -912,11 +903,15 @@ export default function AdminStrategiesPage() {
         />
       )}
       {cloneTarget && (
+        // `users` lists ONLY users with a bound exchange account — a target user
+        // without one could never run the clone, so offering them only invites the
+        // mistake. `ownerOptions` falls back to every user (with an in-dialog
+        // warning) when the owners lookup failed.
         <CloneStrategyDialog
           key={`clone-${cloneTarget.id}`}
           target={cloneTarget}
-          users={users}
-          boundUserIds={boundUserIds}
+          users={ownerOptions}
+          listingBoundUsers={boundUsers !== null}
           onClose={() => setCloneTarget(null)}
           onSave={saveClone}
         />
@@ -1068,14 +1063,18 @@ function EditStrategyDialog({
 function CloneStrategyDialog({
   target,
   users,
-  boundUserIds,
+  listingBoundUsers,
   onClose,
   onSave,
 }: {
   target: AdminStrategy;
   users: AdminUser[];
-  /** Ids known to have a bound exchange account; null when that lookup failed. */
-  boundUserIds: Set<string> | null;
+  /**
+   * True when `users` was narrowed to accounts with a bound exchange. Drives the
+   * helper copy only: no per-target guard is needed any more, because an unbound
+   * user is simply not offerable any more.
+   */
+  listingBoundUsers: boolean;
   onClose: () => void;
   onSave: (targetUserId: string, name: string, start: boolean) => Promise<boolean>;
 }) {
@@ -1085,30 +1084,15 @@ function CloneStrategyDialog({
   const [name, setName] = useState(target.name);
   const [start, setStart] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [userSearch, setUserSearch] = useState('');
 
-  const filteredUsers = useMemo(() => {
-    const q = userSearch.trim().toLowerCase();
-    const list = q
-      ? users.filter(
-          (u) =>
-            (u.name ?? '').toLowerCase().includes(q) ||
-            (u.email ?? '').toLowerCase().includes(q),
-        )
-      : users;
-    const top = list.slice(0, 50);
-    // Never drop the current selection when the search term narrows the list:
-    // Radix would render a blank trigger while still submitting the hidden id.
-    if (targetUserId && !top.some((u) => u.id === targetUserId)) {
-      const selected = users.find((u) => u.id === targetUserId);
-      if (selected) return [selected, ...top];
-    }
-    return top;
-  }, [users, userSearch, targetUserId]);
-
-  // `null` = unknown (owners lookup failed) — don't warn on incomplete data.
-  const targetHasNoExchangeAccount =
-    boundUserIds !== null && targetUserId !== '' && !boundUserIds.has(targetUserId);
+  // Which exchange the clone is bound to — `target.exchange` is a lowercase id
+  // (`binance`), so prefer the display name from SUPPORTED_EXCHANGES.
+  const sourceExchange = target.exchange
+    ? (getExchangeInfo(target.exchange)?.name ?? target.exchange)
+    : '';
+  const sourceBinding = [target.symbol?.trim(), sourceExchange && `on ${sourceExchange}`]
+    .filter(Boolean)
+    .join(' ');
 
   const handleSave = async () => {
     if (!targetUserId) {
@@ -1120,7 +1104,7 @@ function CloneStrategyDialog({
       return;
     }
     setSaving(true);
-    await onSave(targetUserId, name, start && !targetHasNoExchangeAccount);
+    await onSave(targetUserId, name, start);
     setSaving(false);
   };
 
@@ -1129,39 +1113,37 @@ function CloneStrategyDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Clone strategy to another user</DialogTitle>
+          {/* Include the SOURCE exchange, not just the symbol: the clone keeps the
+              source's exchange binding and can only run for a target user holding an
+              account there. */}
           <DialogDescription>
             Copy &quot;{target.name}&quot;
-            {target.symbol ? ` (${target.symbol})` : ''} — the clone is created as STOPPED
+            {sourceBinding ? ` (${sourceBinding})` : ''} — the clone is created as STOPPED
             unless you start it.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
           <div className="grid gap-1.5">
             <Label>Target user</Label>
-            <Input
-              placeholder="Filter users by name or email..."
-              value={userSearch}
-              onChange={(e) => setUserSearch(e.target.value)}
+            <UserSelector
+              value={targetUserId}
+              onValueChange={setTargetUserId}
+              users={users}
+              placeholder="Select target user"
+              emptyText={
+                listingBoundUsers ? 'No users with a bound exchange account' : 'No users'
+              }
             />
-            <Select value={targetUserId} onValueChange={setTargetUserId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select target user" />
-              </SelectTrigger>
-              <SelectContent>
-                {filteredUsers.length > 0 ? (
-                  filteredUsers.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.name || u.email || u.id}
-                      {u.email ? ` — ${u.email}` : ''}
-                    </SelectItem>
-                  ))
-                ) : (
-                  <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                    No matching users
-                  </div>
-                )}
-              </SelectContent>
-            </Select>
+            {/* Say which candidate set this is. Without it the fallback (owners
+                lookup failed -> every user) is indistinguishable from the normal
+                narrowed list, and an admin could pick someone who cannot trade.
+                Claim only what the list actually guarantees: a bound exchange
+                account — not an account ON the source strategy's exchange. */}
+            <p className="text-xs text-muted-foreground">
+              {listingBoundUsers
+                ? 'Only users with a bound exchange account are listed.'
+                : 'Could not verify exchange accounts — showing all users.'}
+            </p>
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="c-name">Clone name</Label>
@@ -1178,20 +1160,9 @@ function CloneStrategyDialog({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Switch
-              id="c-start"
-              checked={start && !targetHasNoExchangeAccount}
-              disabled={targetHasNoExchangeAccount}
-              onCheckedChange={setStart}
-            />
+            <Switch id="c-start" checked={start} onCheckedChange={setStart} />
             <Label htmlFor="c-start">Start the clone immediately</Label>
           </div>
-          {targetHasNoExchangeAccount && (
-            <p className="text-xs text-amber-600">
-              This user has no bound exchange account — the clone can only be created as
-              STOPPED.
-            </p>
-          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={saving}>
