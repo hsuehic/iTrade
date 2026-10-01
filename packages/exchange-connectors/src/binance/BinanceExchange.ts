@@ -81,6 +81,13 @@ export class BinanceExchange extends BaseExchange {
     { total: Decimal; asset?: string }
   >();
   private leverageCache = new Map<string, number>(); // symbol -> leverage mapping
+
+  /**
+   * Symbols whose margin-type rejection was already logged, so a symbol that
+   * keeps a position/open orders cannot flood the log with one warning per
+   * order (strategies place many ladder orders per symbol).
+   */
+  private marginTypeWarned = new Set<string>();
   private futuresPositionModeCache?: {
     mode: 'oneway' | 'hedge';
     fetchedAt: number;
@@ -344,11 +351,38 @@ export class BinanceExchange extends BaseExchange {
       }
     }
 
-    // Set leverage for futures if provided and different from current
-    if (isFutures && options?.leverage) {
+    // 🆕 Assert the requested margin type on EVERY futures order.
+    // Until now the margin type was only applied inside setLeverage(), which is
+    // skipped whenever `leverageCache` already holds the requested value — so
+    // the 2nd and later orders for a symbol never re-asserted the mode, and a
+    // CROSS position silently stayed CROSS even though every signal asked for
+    // ISOLATED (WLDUSDC, strategy 634, 2026-10-01).
+    // setMarginType() still does not throw (margin type must never block an
+    // order) but it logs the rejection now, so the mismatch stays visible.
+    // A reduce-only (closing) order never switches a margin mode — the symbol
+    // necessarily still holds the position being closed, so the exchange would
+    // reject the switch. Skip the redundant round-trip entirely.
+    if (
+      isFutures &&
+      !options?.reduceOnly &&
+      options?.tradeMode &&
+      options.tradeMode !== TradeMode.CASH
+    ) {
+      await this.setMarginType(
+        normalizedSymbol,
+        options.tradeMode === TradeMode.CROSS ? 'cross' : 'isolated',
+      );
+    }
+
+    // Set leverage for futures if provided and different from current.
+    // Skipped for reduce-only orders, exactly like the margin-type assertion
+    // above: a close must never re-lever the position it is reducing (a raw
+    // caller passing leverage on a reduce-only order would otherwise raise the
+    // leverage of the very position being closed).
+    if (isFutures && options?.leverage && !options?.reduceOnly) {
       const currentLeverage = this.leverageCache.get(normalizedSymbol);
       if (currentLeverage !== options.leverage) {
-        await this.setLeverage(normalizedSymbol, options.leverage, options.tradeMode);
+        await this.setLeverage(normalizedSymbol, options.leverage);
         this.leverageCache.set(normalizedSymbol, options.leverage);
       }
     }
@@ -395,19 +429,8 @@ export class BinanceExchange extends BaseExchange {
    * Set leverage for futures trading
    * Binance requires setting leverage before placing orders
    */
-  private async setLeverage(
-    symbol: string,
-    leverage: number,
-    marginType?: TradeMode,
-  ): Promise<void> {
+  private async setLeverage(symbol: string, leverage: number): Promise<void> {
     try {
-      // First, set margin type if specified (isolated or cross)
-      if (marginType && marginType !== 'cash') {
-        // Cast to any to avoid type issues if TradeMode has other values,
-        // though logic implies 'isolated' | 'cross'
-        await this.setMarginType(symbol, marginType as any);
-      }
-
       // Set leverage
       const params = {
         symbol,
@@ -424,7 +447,7 @@ export class BinanceExchange extends BaseExchange {
       const code = error.response?.data?.code;
       if (code === -4028 || code === -4046 || code === -4161) {
         // -4028: Leverage already set
-        // -4046: No need to change margin type
+        // -4046: No need to change margin type (kept: some accounts surface it here too)
         // -4161: Leverage reduction is not supported in Isolated Margin Mode with open positions
       } else {
         throw error;
@@ -434,13 +457,20 @@ export class BinanceExchange extends BaseExchange {
 
   /**
    * Set margin type (ISOLATED or CROSSED) for futures trading
+   *
+   * Never throws: margin type is a best-effort side setting and must not block
+   * order placement. Binance rejects the switch (-4048 / -4047) while the symbol has
+   * an open position or open orders, and returns -4046 when the mode is already
+   * what we asked for. Both used to be swallowed silently, which made "the
+   * strategy asked for ISOLATED but the position is CROSS" impossible to notice;
+   * -4046 stays quiet (expected), everything else is logged as a warning.
    */
   private async setMarginType(
     symbol: string,
     marginType: 'isolated' | 'cross',
   ): Promise<void> {
+    const binanceMarginType = marginType === 'cross' ? 'CROSSED' : 'ISOLATED';
     try {
-      const binanceMarginType = marginType === 'cross' ? 'CROSSED' : 'ISOLATED';
       const params = {
         symbol,
         marginType: binanceMarginType,
@@ -451,13 +481,30 @@ export class BinanceExchange extends BaseExchange {
       await this.futuresClient.post('/fapi/v1/marginType', null, {
         params: signedParams,
       });
+      // A later rejection for this symbol is worth logging again.
+      this.marginTypeWarned.delete(`${symbol}:${binanceMarginType}`);
     } catch (error: any) {
       const code = error.response?.data?.code;
-      // If error is "No need to change margin type", ignore it
+      // If error is "No need to change margin type", ignore it — the symbol is
+      // already on the requested mode, so a later drift deserves a fresh warning.
       if (code === -4046) {
-        // Margin type already set, no action needed
-      } else {
-        // Don't throw - margin type is optional
+        this.marginTypeWarned.delete(`${symbol}:${binanceMarginType}`);
+        return;
+      }
+      // Don't throw - margin type is optional. But do not stay silent either:
+      // a rejected switch (-4048 when the symbol still has a position, -4047
+      // when it still has open orders, ...) leaves the position on its previous
+      // mode. Log once per symbol so the signal is not drowned by repetition.
+      const warnKey = `${symbol}:${binanceMarginType}`;
+      if (!this.marginTypeWarned.has(warnKey)) {
+        this.marginTypeWarned.add(warnKey);
+        console.warn(
+          `[Binance] setMarginType(${symbol} -> ${binanceMarginType}) was rejected ` +
+            `(code=${code ?? 'n/a'}, msg=${
+              error.response?.data?.msg ??
+              (error instanceof Error ? error.message : 'unknown')
+            }). The symbol keeps its current margin mode.`,
+        );
       }
     }
   }

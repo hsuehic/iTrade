@@ -1574,7 +1574,15 @@
           "loadingBalance": "加载余额中...",
           "balanceUnavailable": "余额不可用",
           "price": "价格",
-          "pricePlaceholder": "例如 42000"
+          "pricePlaceholder": "例如 42000",
+          "tradeMode": "保证金模式",
+          "tradeModePlaceholder": "选择保证金模式",
+          "marginModeIsolated": "逐仓 Isolated",
+          "marginModeCross": "全仓 Cross",
+          "marginModeHint": "仅永续合约。币安要求该交易对无持仓且无挂单才能切换保证金模式。",
+          "leverage": "杠杆倍数",
+          "leveragePlaceholder": "例如 10",
+          "leverageHint": "仅永续合约。留空则使用默认值：交易所当前杠杆（Coinbase 为 5 倍）。"
         },
         "actions": {
           "submit": "提交订单",

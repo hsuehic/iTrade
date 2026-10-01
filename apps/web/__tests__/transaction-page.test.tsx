@@ -19,7 +19,11 @@ vi.mock('@/lib/exchanges', () => ({
   SUPPORTED_EXCHANGES: [{ id: 'okx' }],
   getDefaultTradingPair: () => 'ETH/USDT',
   getSymbolFormatHint: () => 'ETH/USDT',
-  parseSymbol: () => ({ base: 'ETH', quote: 'USDT', isPerpetual: false }),
+  parseSymbol: (symbol: string) => ({
+    base: symbol.split(':')[0].split('/')[0],
+    quote: 'USDT',
+    isPerpetual: symbol.includes(':'),
+  }),
 }));
 
 vi.mock('@/components/exchange-selector', () => ({
@@ -182,5 +186,98 @@ describe('TransactionPage', () => {
 
     const quantityInput = screen.getByLabelText('manualOrder.fields.quantity');
     expect(quantityInput).toHaveValue('0.5');
+  });
+
+  it('shows margin mode + leverage for perpetual symbols and sends them', async () => {
+    render(<TransactionPage />);
+
+    // Spot symbol -> no perpetual-only fields
+    expect(
+      screen.queryByLabelText('manualOrder.fields.leverage'),
+    ).not.toBeInTheDocument();
+
+    const symbolInput = await screen.findByLabelText('manualOrder.fields.symbol');
+    await userEvent.clear(symbolInput);
+    await userEvent.type(symbolInput, 'WLD/USDC:USDC');
+
+    const tradeModeSelect = await screen.findByLabelText('manualOrder.fields.tradeMode');
+    expect(tradeModeSelect).toHaveValue('isolated');
+    const leverageInput = screen.getByLabelText('manualOrder.fields.leverage');
+
+    await userEvent.selectOptions(tradeModeSelect, 'cross');
+    await userEvent.type(leverageInput, '10');
+    await userEvent.type(screen.getByLabelText('manualOrder.fields.quantity'), '1500');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'manualOrder.actions.submit' }),
+    );
+
+    const orderCall = (
+      global.fetch as unknown as ReturnType<typeof vi.fn>
+    ).mock.calls.find(
+      ([input, init]) =>
+        String(typeof input === 'string' ? input : input.url).startsWith('/api/orders') &&
+        (init as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(orderCall).toBeDefined();
+    const body = JSON.parse((orderCall![1] as RequestInit).body as string);
+    expect(body.tradeMode).toBe('cross');
+    expect(body.leverage).toBe(10);
+  });
+  it('still submits a spot order (no perpetual settings attached)', async () => {
+    render(<TransactionPage />);
+
+    // Clear first: the form pre-fills a default pair, so typing blindly would
+    // concatenate onto it (the assertion below would then pass by accident).
+    const symbolInput = await screen.findByLabelText('manualOrder.fields.symbol');
+    await userEvent.clear(symbolInput);
+    await userEvent.type(symbolInput, 'ETH/USDT');
+    await userEvent.type(screen.getByLabelText('manualOrder.fields.quantity'), '0.5');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'manualOrder.actions.submit' }),
+    );
+
+    const orderCall = (
+      global.fetch as unknown as ReturnType<typeof vi.fn>
+    ).mock.calls.find(
+      ([input, init]) =>
+        String(typeof input === 'string' ? input : input.url).startsWith('/api/orders') &&
+        (init as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(orderCall).toBeDefined();
+    const body = JSON.parse((orderCall![1] as RequestInit).body as string);
+    expect(body.tradeMode).toBeUndefined();
+    expect(body.leverage).toBeUndefined();
+  });
+
+  it('lets a spot order through while a stale perp leverage sits in the form', async () => {
+    render(<TransactionPage />);
+
+    const symbolInput = await screen.findByLabelText('manualOrder.fields.symbol');
+    await userEvent.clear(symbolInput);
+    await userEvent.type(symbolInput, 'WLD/USDC:USDC');
+    // An out-of-range value typed while the symbol was perpetual ...
+    await userEvent.type(screen.getByLabelText('manualOrder.fields.leverage'), '200');
+    // ... must not block a submit once the symbol is a plain pair again: the
+    // field (and its error) is no longer rendered, so the user could not see why
+    // nothing happened.
+    await userEvent.clear(symbolInput);
+    await userEvent.type(symbolInput, 'ETH/USDT');
+    await userEvent.type(screen.getByLabelText('manualOrder.fields.quantity'), '0.5');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'manualOrder.actions.submit' }),
+    );
+
+    const orderCall = (
+      global.fetch as unknown as ReturnType<typeof vi.fn>
+    ).mock.calls.find(
+      ([input, init]) =>
+        String(typeof input === 'string' ? input : input.url).startsWith('/api/orders') &&
+        (init as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(orderCall).toBeDefined();
+    const body = JSON.parse((orderCall![1] as RequestInit).body as string);
+    expect(body.symbol).toBe('ETH/USDT');
+    expect(body.tradeMode).toBeUndefined();
+    expect(body.leverage).toBeUndefined();
   });
 });

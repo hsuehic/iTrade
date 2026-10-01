@@ -111,4 +111,53 @@ describe('OKXExchange reduceOnly forwarding', () => {
     expect(warnSpy).toHaveBeenCalled();
     expect(String(warnSpy.mock.calls[0][0])).toContain('reduceOnly');
   });
+
+  it('sets leverage through set-leverage, never as an order-body field', async () => {
+    // OKX v5 documents no `lever` request parameter on Place order: the only way
+    // to change leverage is POST /api/v5/account/set-leverage. Assert both halves
+    // so a future "just add it to the order body" change is caught.
+    await exchange.createOrder(
+      'WLD/USDT:USDT',
+      OrderSide.BUY,
+      OrderType.LIMIT,
+      new Decimal(15000),
+      new Decimal('0.4202'),
+      undefined,
+      'T610LEVOpen',
+      { tradeMode: 'isolated', leverage: 10 } as any,
+    );
+
+    expect(postSpy).toHaveBeenCalledTimes(2);
+    const [levPath, levBody] = postSpy.mock.calls[0];
+    expect(levPath).toBe('/api/v5/account/set-leverage');
+    expect(levBody).toEqual({
+      instId: 'WLD-USDT-SWAP',
+      lever: '10',
+      mgnMode: 'isolated',
+      posSide: 'net',
+    });
+
+    const [orderPath, orderBody] = postSpy.mock.calls[1];
+    expect(orderPath).toBe('/api/v5/trade/order');
+    expect(orderBody).not.toHaveProperty('lever');
+  });
+
+  it('touches neither set-leverage nor a `lever` body field for a reduce-only close', async () => {
+    await exchange.createOrder(
+      'WLD/USDT:USDT',
+      OrderSide.SELL,
+      OrderType.LIMIT,
+      new Decimal(15000),
+      new Decimal('0.4202'),
+      undefined,
+      'T610LEVClose',
+      { tradeMode: 'isolated', leverage: 10, reduceOnly: true } as any,
+    );
+
+    expect(postSpy).toHaveBeenCalledTimes(1);
+    const [path, body] = postSpy.mock.calls[0];
+    expect(path).toBe('/api/v5/trade/order');
+    expect(body).not.toHaveProperty('lever');
+    expect(body.reduceOnly).toBe('true');
+  });
 });

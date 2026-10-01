@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Decimal } from 'decimal.js';
-import { AccountWalletType } from '@itrade/core';
+import {
+  AccountWalletType,
+  OrderSide,
+  OrderType,
+  TimeInForce,
+  TradeMode,
+} from '@itrade/core';
 import { BinanceExchange } from '../binance/BinanceExchange';
 
 describe('BinanceExchange Leverage & Margin', () => {
@@ -737,5 +743,255 @@ describe('BinanceExchange COIN-M / margin / options wallets', () => {
     await expect(exchange.getWalletBalances(AccountWalletType.OPTION)).rejects.toThrow(
       /does not expose an Options wallet balance/,
     );
+  });
+});
+
+describe('BinanceExchange createOrder margin type (WLDUSDC cross regression)', () => {
+  let exchange: BinanceExchange;
+  let futuresPostSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    exchange = new BinanceExchange(false);
+    (exchange as any).credentials = {
+      apiKey: 'test-api-key',
+      secretKey: 'test-secret-key',
+    };
+
+    futuresPostSpy = vi
+      .fn()
+      .mockImplementation((url: string, _body: any, config: any) => {
+        if (url.includes('/marginType')) {
+          return Promise.resolve({ data: { msg: 'success' } });
+        }
+        if (url.includes('/leverage')) {
+          return Promise.resolve({ data: { leverage: config.params.leverage } });
+        }
+        if (url.includes('/fapi/v1/order')) {
+          return Promise.resolve({
+            data: {
+              orderId: 123456,
+              clientOrderId: config.params.newClientOrderId,
+              symbol: config.params.symbol,
+              side: config.params.side,
+              type: config.params.type,
+              origQty: config.params.quantity,
+              status: 'NEW',
+              timeInForce: 'GTC',
+              time: Date.now(),
+              updateTime: Date.now(),
+            },
+          });
+        }
+        return Promise.resolve({ data: {} });
+      });
+
+    (exchange as any).futuresClient.post = futuresPostSpy;
+    // Risky heuristic in prod, but it must not be part of what we assert here
+    (exchange as any).getFuturesPositionMode = vi.fn().mockResolvedValue('oneway');
+  });
+
+  const callsTo = (fragment: string) =>
+    futuresPostSpy.mock.calls.filter(([url]: any[]) => String(url).includes(fragment));
+
+  const placePerpOrder = (clientOrderId: string) =>
+    exchange.createOrder(
+      'WLD/USDC:USDC',
+      OrderSide.BUY,
+      OrderType.MARKET,
+      new Decimal(1500),
+      undefined,
+      TimeInForce.GTC,
+      clientOrderId,
+      { tradeMode: TradeMode.ISOLATED, leverage: 5 },
+    );
+
+  it('asserts the margin type even when the leverage cache already matches', async () => {
+    // The pre-fix bug: the margin type was only applied inside setLeverage(),
+    // which createOrder skips when leverageCache already holds the value — so
+    // from the 2nd order onwards the requested mode never reached Binance and a
+    // CROSS position silently stayed CROSS.
+    (exchange as any).leverageCache.set('WLDUSDC', 5);
+
+    await placePerpOrder('s634-1');
+
+    const marginTypeCalls = callsTo('/marginType');
+    expect(marginTypeCalls).toHaveLength(1);
+    expect(marginTypeCalls[0][2].params.marginType).toBe('ISOLATED');
+    // Cached leverage -> no redundant leverage request
+    expect(callsTo('/leverage')).toHaveLength(0);
+    expect(callsTo('/fapi/v1/order')).toHaveLength(1);
+  });
+
+  it('warns instead of failing when the exchange rejects the switch (-4048)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    futuresPostSpy.mockImplementationOnce(() =>
+      Promise.reject({
+        response: {
+          data: {
+            code: -4048,
+            msg: 'Margin type cannot be changed if there exists position.',
+          },
+        },
+      }),
+    );
+
+    await expect(placePerpOrder('s634-2')).resolves.toBeTruthy();
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(String(warnSpy.mock.calls[0][0])).toContain('-4048');
+    warnSpy.mockRestore();
+  });
+
+  it('stays quiet when the margin type is already the requested one (-4046)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    futuresPostSpy.mockImplementationOnce(() =>
+      Promise.reject({
+        response: { data: { code: -4046, msg: 'No need to change margin type.' } },
+      }),
+    );
+
+    await expect(placePerpOrder('s634-3')).resolves.toBeTruthy();
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+  it('never touches the margin type for reduce-only closes', async () => {
+    // A reduce-only close necessarily leaves the position open, so the exchange
+    // would reject the switch: skip the request entirely.
+    await exchange.createOrder(
+      'WLD/USDC:USDC',
+      OrderSide.SELL,
+      OrderType.MARKET,
+      new Decimal(1500),
+      undefined,
+      TimeInForce.GTC,
+      's634-close',
+      { tradeMode: TradeMode.ISOLATED, reduceOnly: true },
+    );
+    expect(callsTo('/marginType')).toHaveLength(0);
+    // ...but the closing order itself still goes out
+    expect(callsTo('/fapi/v1/order')).toHaveLength(1);
+
+    // Explicit cash mode -> nothing to set
+    await exchange.createOrder(
+      'WLD/USDC:USDC',
+      OrderSide.BUY,
+      OrderType.MARKET,
+      new Decimal(1),
+      undefined,
+      TimeInForce.GTC,
+      's634-cash',
+      { tradeMode: TradeMode.CASH },
+    );
+    expect(callsTo('/marginType')).toHaveLength(0);
+  });
+
+  it('never re-levers a reduce-only close', async () => {
+    // Enforced in the connector, not only in the web service: a caller (a
+    // strategy signal, a future API route) that passes leverage on a close must
+    // not raise the leverage of the very position being reduced.
+    await exchange.createOrder(
+      'WLD/USDC:USDC',
+      OrderSide.SELL,
+      OrderType.MARKET,
+      new Decimal(1500),
+      undefined,
+      TimeInForce.GTC,
+      's634-close-lev',
+      { tradeMode: TradeMode.ISOLATED, leverage: 10, reduceOnly: true },
+    );
+
+    expect(callsTo('/leverage')).toHaveLength(0);
+    expect(callsTo('/marginType')).toHaveLength(0);
+    expect(callsTo('/fapi/v1/order')).toHaveLength(1);
+  });
+
+  it('still sets leverage for an opening order', async () => {
+    await placePerpOrder('s634-open-lev');
+
+    expect(callsTo('/leverage')).toHaveLength(1);
+  });
+
+  it('logs a rejected margin-type switch only once per symbol', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    futuresPostSpy.mockImplementation((url: string, _body: any, config: any) => {
+      if (String(url).includes('/marginType')) {
+        return Promise.reject({
+          response: {
+            data: {
+              code: -4047,
+              msg: 'Margin type cannot be changed if there exists open orders.',
+            },
+          },
+        });
+      }
+      if (String(url).includes('/leverage')) {
+        return Promise.resolve({ data: { leverage: config.params.leverage } });
+      }
+      if (String(url).includes('/fapi/v1/order')) {
+        return Promise.resolve({
+          data: {
+            orderId: 4242,
+            clientOrderId: config.params.newClientOrderId,
+            symbol: config.params.symbol,
+            side: config.params.side,
+            type: config.params.type,
+            origQty: config.params.quantity,
+            status: 'NEW',
+            timeInForce: 'GTC',
+            time: Date.now(),
+            updateTime: Date.now(),
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    await placePerpOrder('s634-6');
+    await placePerpOrder('s634-7');
+
+    const marginWarns = warnSpy.mock.calls.filter((call) =>
+      String(call[0]).includes('setMarginType'),
+    );
+    expect(marginWarns).toHaveLength(1);
+    warnSpy.mockRestore();
+  });
+
+  it('re-arms the warning after an "already correct" answer (-4046)', async () => {
+    // Someone flipping the mode by hand (or an earlier order) makes Binance
+    // answer -4046 ("no need to change"). A later drift must warn again instead
+    // of the symbol staying silent for the rest of the process.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const defaultImpl = futuresPostSpy.getMockImplementation()!;
+    let marginTypeCalls = 0;
+    futuresPostSpy.mockImplementation((url: string, body: any, config: any) => {
+      if (String(url).includes('/marginType')) {
+        marginTypeCalls += 1;
+        if (marginTypeCalls === 2) {
+          return Promise.reject({
+            response: { data: { code: -4046, msg: 'No need to change margin type.' } },
+          });
+        }
+        return Promise.reject({
+          response: {
+            data: {
+              code: -4047,
+              msg: 'Margin type cannot be changed if there exists open orders.',
+            },
+          },
+        });
+      }
+      return defaultImpl(url, body, config);
+    });
+
+    await placePerpOrder('s634-8'); // rejected -> warns once
+    await placePerpOrder('s634-9'); // already isolated -> re-arms silently
+    await placePerpOrder('s634-10'); // drifted again -> warns again
+
+    const marginWarns = warnSpy.mock.calls.filter((call) =>
+      String(call[0]).includes('setMarginType'),
+    );
+    expect(marginWarns).toHaveLength(2);
+    warnSpy.mockRestore();
   });
 });

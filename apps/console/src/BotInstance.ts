@@ -502,6 +502,8 @@ export class BotInstance {
       strategyId: normalizedOrder.strategyId,
       strategyType: normalizedOrder.strategyType,
       strategyName: normalizedOrder.strategyName,
+      tradeMode: normalizedOrder.tradeMode, // 🆕 Requested trading mode (audit)
+      leverage: normalizedOrder.leverage, // 🆕 Requested leverage (audit)
     });
   }
 

@@ -42,11 +42,15 @@ const manualOrderSchema = z
     type: z.enum(['MARKET', 'LIMIT']),
     quantity: z.string().min(1, 'Quantity is required'),
     price: z.string().optional(),
+    // 🆕 Perpetual-only order settings (ignored for spot symbols)
+    tradeMode: z.enum(['isolated', 'cross']).optional(),
+    leverage: z.string().optional(),
     positionAction: z
       .enum(['OPEN_LONG', 'OPEN_SHORT', 'CLOSE_LONG', 'CLOSE_SHORT'])
       .optional(),
   })
   .superRefine((data, ctx) => {
+    const isPerpetual = data.symbol.includes(':');
     const quantity = Number(data.quantity);
     if (!Number.isFinite(quantity) || quantity <= 0) {
       ctx.addIssue({
@@ -66,8 +70,29 @@ const manualOrderSchema = z
       }
     }
 
+    // Only a perpetual opening order can have a leverage worth validating: the
+    // field is not rendered for spot, and a CLOSE_* never sends one. A stale
+    // value left in the form from an earlier perp entry must therefore never
+    // block a submit (a manual close has to go through even then — see
+    // resolvePerpOrderSettings for what is actually sent).
+    const closesPosition =
+      data.positionAction === 'CLOSE_LONG' || data.positionAction === 'CLOSE_SHORT';
+    if (isPerpetual && !closesPosition && data.leverage) {
+      const leverage = Number(data.leverage);
+      // Coinbase perpetuals cap out at 10x (see CoinbaseExchange), Binance/OKX
+      // go higher. The exchange stays authoritative — it rejects whatever it
+      // dislikes — but the form must not offer a value that can never apply.
+      const maxLeverage = data.exchange.toLowerCase() === 'coinbase' ? 10 : 125;
+      if (!Number.isInteger(leverage) || leverage < 1 || leverage > maxLeverage) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Leverage must be an integer between 1 and ${maxLeverage}`,
+          path: ['leverage'],
+        });
+      }
+    }
+
     if (data.positionAction) {
-      const isPerpetual = data.symbol.includes(':');
       if (!isPerpetual) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -137,6 +162,10 @@ export default function TransactionPage() {
     type: 'MARKET',
     quantity: '',
     price: '',
+    // 🆕 Default to isolated margin for perpetuals: Binance USDⓈ-M accounts
+    // default to CROSSED, which silently produced cross positions.
+    tradeMode: 'isolated',
+    leverage: '',
     positionAction: undefined,
   });
   const [manualErrors, setManualErrors] = useState<Record<string, string>>({});
@@ -291,6 +320,22 @@ export default function TransactionPage() {
           manualOrder.type === 'LIMIT'
             ? manualOrder.price?.trim() || undefined
             : undefined,
+        // 🆕 Perpetual-only settings. `leverage` is a numeric API field; the
+        // form keeps it as a string so an empty input stays "not specified".
+        // A CLOSE_* is a reduce-only exit: it must not carry a margin mode
+        // (Binance rejects the switch while the position is still open) nor a
+        // leverage (it would re-lever the very position being closed). A venue
+        // with a cross-only perp market (Coinbase) has no selector and must not
+        // be told a mode either — the connector would ignore it and the audit
+        // column would misreport the position.
+        tradeMode:
+          sendPerpSettings && supportsMarginModeSelect
+            ? manualOrder.tradeMode
+            : undefined,
+        leverage:
+          sendPerpSettings && (manualOrder.leverage ?? '').trim()
+            ? Number((manualOrder.leverage ?? '').trim())
+            : undefined,
         positionAction: manualOrder.positionAction || undefined,
       };
 
@@ -326,6 +371,15 @@ export default function TransactionPage() {
 
   const baseAsset = parseSymbol(manualOrder.symbol).base.toUpperCase();
   const isSpotSymbol = Boolean(baseAsset) && !manualOrder.symbol.includes(':');
+  // 🆕 Perpetual-only settings (margin mode + leverage) are shown/validated for
+  // symbols in the perpetual form BASE/QUOTE:SETTLE (e.g. BTC/USDT:USDT) — and
+  // only for opening orders: a CLOSE_* never sends them (see the payload above).
+  const isPerpetualSymbol = manualOrder.symbol.includes(':');
+  const isClosingOrder = manualOrder.positionAction?.startsWith('CLOSE_') ?? false;
+  const sendPerpSettings = isPerpetualSymbol && !isClosingOrder;
+  const supportsMarginModeSelect = ['binance', 'okx'].includes(
+    manualOrder.exchange.toLowerCase(),
+  );
   const availableBaseBalance = baseAsset ? (assetBalances[baseAsset] ?? 0) : 0;
   const canShowSellAll = manualOrder.side === 'SELL' && isSpotSymbol;
 
@@ -561,6 +615,82 @@ export default function TransactionPage() {
                         <p className="text-sm text-rose-500">{manualErrors.price}</p>
                       )}
                     </div>
+
+                    {/* 🆕 Perpetual-only settings, opening orders only. Binance
+                        USDⓈ-M defaults to CROSSED, so the margin mode is
+                        offered explicitly here (isolated is the form default).
+                        Coinbase's perp market is cross-only, hence no
+                        margin-mode selector for it. A CLOSE_* hides both: it
+                        must not re-assert a mode nor re-lever the exit. */}
+                    {sendPerpSettings && supportsMarginModeSelect && (
+                      <div className="space-y-2">
+                        <Label htmlFor="manual-trade-mode">
+                          {t('manualOrder.fields.tradeMode')}
+                        </Label>
+                        <Select
+                          value={manualOrder.tradeMode ?? 'isolated'}
+                          onValueChange={(value) =>
+                            setManualOrder((prev) => ({
+                              ...prev,
+                              tradeMode: value as ManualOrderForm['tradeMode'],
+                            }))
+                          }
+                        >
+                          <SelectTrigger id="manual-trade-mode">
+                            <SelectValue
+                              placeholder={t('manualOrder.fields.tradeModePlaceholder')}
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="isolated">
+                              {t('manualOrder.fields.marginModeIsolated')}
+                            </SelectItem>
+                            <SelectItem value="cross">
+                              {t('manualOrder.fields.marginModeCross')}
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          {t('manualOrder.fields.marginModeHint')}
+                        </p>
+                        {(submitAttempted || manualTouched.tradeMode) &&
+                          manualErrors.tradeMode && (
+                            <p className="text-sm text-rose-500">
+                              {manualErrors.tradeMode}
+                            </p>
+                          )}
+                      </div>
+                    )}
+
+                    {sendPerpSettings && (
+                      <div className="space-y-2">
+                        <Label htmlFor="manual-leverage">
+                          {t('manualOrder.fields.leverage')}
+                        </Label>
+                        <Input
+                          id="manual-leverage"
+                          inputMode="numeric"
+                          value={manualOrder.leverage ?? ''}
+                          placeholder={t('manualOrder.fields.leveragePlaceholder')}
+                          onChange={(event) =>
+                            setManualOrder((prev) => ({
+                              ...prev,
+                              leverage: event.target.value,
+                            }))
+                          }
+                          onBlur={() => handleManualBlur('leverage')}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {t('manualOrder.fields.leverageHint')}
+                        </p>
+                        {(submitAttempted || manualTouched.leverage) &&
+                          manualErrors.leverage && (
+                            <p className="text-sm text-rose-500">
+                              {manualErrors.leverage}
+                            </p>
+                          )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-4 flex items-center justify-between gap-4">

@@ -220,6 +220,17 @@ export interface Order {
   commission?: Decimal;
   commissionAsset?: string;
 
+  /**
+   * 🆕 Requested trading mode for this order: 'cash' for spot, 'isolated' /
+   * 'cross' for perpetuals. Persisted for audit — it records what the caller
+   * asked the exchange for, which is NOT necessarily the position's resulting
+   * mode: exchanges reject a margin-type switch while the symbol still has a
+   * position (-4048) or open orders (-4047) and keep the previous mode.
+   */
+  tradeMode?: TradeMode;
+  /** 🆕 Requested leverage multiplier for this order (perpetuals only). */
+  leverage?: number;
+
   // Optional error message for rejected/failed order placement
   errorMessage?: string;
 }

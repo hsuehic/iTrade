@@ -10,9 +10,16 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Order, OrderSide, OrderStatus, OrderType, TimeInForce } from '@itrade/core';
+import {
+  Order,
+  OrderSide,
+  OrderStatus,
+  OrderType,
+  TimeInForce,
+  TradeMode,
+} from '@itrade/core';
 
-import { decimalTransformer } from '../utils/transformers';
+import { decimalTransformer, numberTransformer } from '../utils/transformers';
 import type { PositionEntity } from './Position';
 import type { StrategyEntity } from './Strategy';
 import type { OrderFillEntity } from './OrderFill';
@@ -185,6 +192,44 @@ export class OrderEntity implements Order {
    */
   @Column({ type: 'text', nullable: true })
   errorMessage?: string;
+
+  /**
+   * 🆕 Requested trading mode for this order: 'cash' (spot) / 'isolated' /
+   * 'cross' (perpetuals). Persisted for audit so we can tell what the caller
+   * asked the exchange for.
+   *
+   * Why it exists (WLDUSDC, strategy 634, 2026-10-01): the strategy asked for
+   * an isolated perpetual, yet the position came back as `cross`. Nothing in
+   * the DB showed which mode the order requested, so the mismatch could only be
+   * reconstructed by reading the connector code. This records the request; it
+   * does NOT prove the exchange applied it — Binance rejects a margin-type
+   * switch while the symbol still has a position (-4048) or open orders (-4047) and
+   * keeps the previous mode.
+   *
+   * NOTE: additive column. The CD workflow detects changes to entity
+   * files under packages/<pkg>/src/entities/ and runs the schema-migrator
+   * (schema sync) before the app containers are recreated — see the
+   * `schema_check` step in `.github/workflows/deploy.yml`. That ordering
+   * matters: TypeORM selects every mapped column, so app code deployed first
+   * would fail with a missing-column error.
+   */
+  @Column({ type: 'text', nullable: true })
+  tradeMode?: TradeMode;
+
+  /** 🆕 Requested leverage multiplier for this order (perpetuals only).
+   * `numeric`, not `integer`: the value must round-trip exactly (and stay able
+   * to express an exchange-side fractional leverage such as OKX's 2.5, should
+   * one ever reach this column). The manual order form only accepts whole
+   * numbers for now, so this is about lossless storage, not fractional input.
+   */
+  @Column({
+    type: 'numeric',
+    precision: 12,
+    scale: 4,
+    nullable: true,
+    transformer: numberTransformer,
+  })
+  leverage?: number;
 
   @OneToMany('order_fills', 'order', { cascade: true })
   fills?: OrderFillEntity[];

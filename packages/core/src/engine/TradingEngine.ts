@@ -65,6 +65,16 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
    */
   private static readonly DUPLICATE_EXIT_RECONCILE_TIMEOUT_MS = 3000;
 
+  /**
+   * 🆕 A perpetual symbol carries its settlement asset after a colon
+   * (`BASE/QUOTE:SETTLE`, e.g. `WLD/USDC:USDC`) on every venue we talk to;
+   * spot symbols have no suffix. Used to keep the audit metadata truthful:
+   * only a perpetual ever reaches the margin-type / leverage APIs.
+   */
+  private static isPerpetualSymbol(symbol: string): boolean {
+    return symbol.includes(':');
+  }
+
   private _isRunning = false;
   private _isInitializing = false; // Track if engine is in initialization phase
   private readonly _strategies = new Map<string, IStrategy>();
@@ -886,6 +896,16 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       executedOrder.strategyId = strategyId;
       executedOrder.strategyType = strategyType; // Strategy type/class
       executedOrder.strategyName = userDefinedName; // User-defined name
+      // 🆕 Record what we asked the exchange for (audit), but only when a mode
+      // switch was actually attempted: a reduce-only close never sets one.
+      // The order tracker persists these into `orders.tradeMode` /
+      // `orders.leverage` so a requested mode the exchange refused to apply
+      // stays traceable. Spot symbols are excluded: only a perpetual reaches
+      // the margin-type API, so recording a mode for spot would misreport it.
+      if (!reduceOnly && TradingEngine.isPerpetualSymbol(symbol)) {
+        executedOrder.tradeMode = tradeMode;
+        executedOrder.leverage = leverage;
+      }
       if (!executedOrder.userId) {
         executedOrder.userId = this._userId;
       }

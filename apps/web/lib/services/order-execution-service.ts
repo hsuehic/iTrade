@@ -21,6 +21,8 @@ import { CryptoUtils } from '@itrade/utils/CryptoUtils';
 import { getDataManager } from '@/lib/data-manager';
 import { parseSymbol } from '@/lib/exchanges';
 
+import { resolvePerpOrderSettings } from './perp-order-settings';
+
 export interface ManualOrderInput {
   exchange: string;
   symbol: string;
@@ -187,22 +189,38 @@ export async function executeManualOrder(userId: string, input: ManualOrderInput
       CLOSE_SHORT: OrderSide.BUY,
     };
 
+    // 🆕 Resolve the trading mode / leverage actually sent to the exchange.
+    // A Binance perpetual opening order asks for ISOLATED when the caller omits
+    // a mode: Binance USDⓈ-M accounts default to CROSSED, so without an explicit
+    // request a brand new perpetual position silently ends up on cross margin
+    // (strategy 634 / WLDUSDC, 2026-10-01). Coinbase's perp market is cross-only
+    // and its connector ignores a mode, so nothing is sent there (a leverage
+    // default of 5x still applies); OKX's connector already defaults tdMode per
+    // order, but the requested mode is still recorded below for audit.
+    const isClosingOrder = positionAction ? reduceOnlyActions.has(positionAction) : false;
+    const { tradeMode: resolvedTradeMode, leverage: resolvedLeverage } =
+      resolvePerpOrderSettings({
+        isPerpetual,
+        isClosingOrder,
+        isBinance,
+        isCoinbase,
+        requestedTradeMode: input.tradeMode,
+        requestedLeverage: input.leverage,
+      });
+
     const placeOrder = async () => {
       const quantity = toDecimal(input.quantity);
       const price = input.price !== undefined ? toDecimal(input.price) : undefined;
       const side = positionAction ? sideOverrideMap[positionAction] : input.side;
-      const tradeMode =
-        isCoinbase && isPerpetual && !input.tradeMode
-          ? TradeMode.ISOLATED
-          : input.tradeMode;
-      const leverage = isCoinbase && isPerpetual && !input.leverage ? 5 : input.leverage;
 
-      if (tradeMode !== input.tradeMode || leverage !== input.leverage) {
-        console.info('[Orders] Applied Coinbase defaults for perpetual order', {
+      if (resolvedTradeMode !== input.tradeMode || resolvedLeverage !== input.leverage) {
+        console.info('[Orders] Resolved perpetual order settings for manual order', {
           userId,
           symbol: input.symbol,
-          tradeMode: tradeMode ?? null,
-          leverage: leverage ?? null,
+          requestedTradeMode: input.tradeMode ?? null,
+          requestedLeverage: input.leverage ?? null,
+          tradeMode: resolvedTradeMode ?? null,
+          leverage: resolvedLeverage ?? null,
         });
       }
 
@@ -215,8 +233,11 @@ export async function executeManualOrder(userId: string, input: ManualOrderInput
         TimeInForce.GTC,
         undefined,
         {
-          tradeMode,
-          leverage,
+          // 🆕 Perp only, opening orders only: a spot symbol never gets a
+          // mode/leverage (the UI hides those fields) and a CLOSE_* never
+          // re-asserts one (see resolvePerpOrderSettings).
+          tradeMode: resolvedTradeMode,
+          leverage: resolvedLeverage,
           positionSide:
             isBinance && isPerpetual && positionAction
               ? positionSideMap[positionAction]
@@ -328,6 +349,13 @@ export async function executeManualOrder(userId: string, input: ManualOrderInput
 
     order.userId = userId;
     order.exchange = input.exchange;
+    // 🆕 Persist what we asked the exchange for (audit). Note this is the
+    // request, not the resulting position mode: Binance refuses a margin-type
+    // switch (-4048: position open, -4047: open orders).
+    if (isPerpetual && !isClosingOrder) {
+      order.tradeMode = resolvedTradeMode;
+      order.leverage = resolvedLeverage;
+    }
 
     const { fills: _fills, ...orderData } = order;
     const savedOrder = await dataManager.saveOrder({

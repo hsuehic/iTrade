@@ -831,3 +831,22 @@ describe('TradingEngine - Order Event Emission', () => {
     });
   });
 });
+
+describe('TradingEngine - perpetual symbol detection (audit metadata)', () => {
+  // orders.tradeMode / orders.leverage are only truthful for perpetuals: only
+  // they reach the margin-type / leverage APIs, so a spot order must never come
+  // back carrying a margin mode the engine never asked Binance for.
+  const isPerpetual = (symbol: string) =>
+    (TradingEngine as any).isPerpetualSymbol(symbol);
+
+  it('treats BASE/QUOTE:SETTLE as perpetual on every venue we talk to', () => {
+    expect(isPerpetual('WLD/USDC:USDC')).toBe(true);
+    expect(isPerpetual('BTC/USDT:USDT')).toBe(true);
+    expect(isPerpetual('ETH/USD:USD')).toBe(true);
+  });
+
+  it('treats a plain pair as spot', () => {
+    expect(isPerpetual('ETH/USDT')).toBe(false);
+    expect(isPerpetual('WLDUSDC')).toBe(false);
+  });
+});

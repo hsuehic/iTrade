@@ -87,8 +87,8 @@ await this.executeOrder({
   type: orderType,
   price: signal.price,
   stopPrice: signal.stopLoss,
-  tradeMode: signal.tradeMode,    // Passed through
-  leverage: signal.leverage,      // Passed through
+  tradeMode: signal.tradeMode, // Passed through
+  leverage: signal.leverage, // Passed through
 });
 ```
 
@@ -131,7 +131,7 @@ public async createOrder(
 
   // Determine instrument type
   const isSwap = instId.endsWith('-SWAP') || /-\d{6}$/.test(instId);
-  
+
   // Determine tdMode: use option if provided, else default
   // SPOT: cash (non-margin trading)
   // SWAP/FUTURES: isolated (safer than cross), or cross if specified
@@ -148,22 +148,25 @@ public async createOrder(
     sz: quantity.toString(),
   };
 
-  // Set leverage for SWAP/FUTURES
-  if (isSwap && options?.leverage) {
-    orderData.lever = options.leverage.toString();
+  // Leverage is NOT an order-body parameter on OKX: v5 documents no `lever`
+  // field on POST /api/v5/trade/order (the `lever` entries in the reference are
+  // response fields). It is set through a separate call before the order, and
+  // skipped for a reduce-only order so a close never re-levers the position.
+  if (isSwap && options?.leverage && !options?.reduceOnly) {
+    await this.setOkxLeverage(instId, options.leverage, tdMode);
   }
-  
+
   // ... rest of order creation
 }
 ```
 
 **OKX Trade Mode Mapping**:
 
-| Unified Mode | OKX tdMode | Description |
-|--------------|------------|-------------|
-| `cash` | `cash` | Spot trading (no margin) |
-| `isolated` | `isolated` | Isolated margin (default for futures) |
-| `cross` | `cross` | Cross margin |
+| Unified Mode | OKX tdMode | Description                           |
+| ------------ | ---------- | ------------------------------------- |
+| `cash`       | `cash`     | Spot trading (no margin)              |
+| `isolated`   | `isolated` | Isolated margin (default for futures) |
+| `cross`      | `cross`    | Cross margin                          |
 
 **Default Behavior**:
 
@@ -176,26 +179,34 @@ public async createOrder(
 
 **Leverage & Margin Type Implementation**:
 
-Binance requires leverage to be set **separately before order creation** (unlike OKX which sends it with the order):
+Binance requires leverage to be set **separately before order creation** (as does OKX, via `POST /api/v5/account/set-leverage`; neither venue accepts a leverage field on the order body):
 
 ```typescript
+// Assert the margin type independently of the leverage cache (2026-10-01:
+// it used to live inside setLeverage(), which is skipped on a cache hit)
+if (
+  isFutures &&
+  !options?.reduceOnly &&
+  options?.tradeMode &&
+  options.tradeMode !== TradeMode.CASH
+) {
+  await this.setMarginType(
+    normalizedSymbol,
+    options.tradeMode === TradeMode.CROSS ? 'cross' : 'isolated',
+  );
+}
+
 // Auto-set leverage before placing order
 if (isFutures && options?.leverage) {
   const currentLeverage = this.leverageCache.get(normalizedSymbol);
   if (currentLeverage !== options.leverage) {
-    await this.setLeverage(normalizedSymbol, options.leverage, options.tradeMode);
+    await this.setLeverage(normalizedSymbol, options.leverage);
     this.leverageCache.set(normalizedSymbol, options.leverage);
   }
 }
 
 // Private method: Set leverage via Binance Futures API
-private async setLeverage(symbol: string, leverage: number, marginType?: string) {
-  // Step 1: Set margin type (ISOLATED or CROSSED) if specified
-  if (marginType && marginType !== 'cash') {
-    await this.setMarginType(symbol, marginType);
-  }
-  
-  // Step 2: Set leverage
+private async setLeverage(symbol: string, leverage: number) {
   await this.futuresClient.post('/fapi/v1/leverage', {
     symbol,
     leverage,
@@ -205,6 +216,7 @@ private async setLeverage(symbol: string, leverage: number, marginType?: string)
 ```
 
 **Key Features:**
+
 - ✅ Auto-sets leverage before order creation
 - ✅ Caches leverage per symbol to avoid redundant API calls
 - ✅ Supports margin type (isolated/cross)
@@ -235,7 +247,7 @@ public async createOrder(
       params.type = 'TAKE_PROFIT';
     }
   }
-  
+
   // ... rest of order creation
 }
 ```
@@ -267,31 +279,36 @@ const isPerpetual = productId.includes('-PERP') || symbol.includes(':');
 
 // Add leverage to order body for perpetual futures
 if (isPerpetual && options?.leverage) {
-  body.leverage = options.leverage.toString();  // Up to 10x
+  body.leverage = options.leverage.toString(); // Up to 10x
   console.log(
     `[Coinbase] Setting leverage ${options.leverage}x for perpetual ${productId}`,
   );
 }
 
-// Add margin type if specified
-if (isPerpetual && options?.tradeMode && options.tradeMode !== 'cash') {
-  body.margin_type = options.tradeMode.toUpperCase(); // ISOLATED or CROSS
+// Add margin type: the connector sends a fixed ISOLATED field, but Coinbase's
+// perpetual venue is cross-only and reports `marginType: 'cross'` for the
+// position, so the value is not user-selectable.
+if (isPerpetual) {
+  body.margin_type = 'ISOLATED';
 }
 ```
 
 **Key Features:**
+
 - ✅ Leverage specified per-order in request body
 - ✅ Supports up to 10x leverage for perpetuals
-- ✅ Margin type support (ISOLATED/CROSS)
+- ⚠️ Margin type: not selectable (cross-only venue; the connector sends a fixed `margin_type: 'ISOLATED'` field that the venue reports back as `cross`)
 - ✅ Auto-detects perpetual contracts (`-PERP` suffix)
 - ✅ Same unified interface as OKX/Binance
 
 **Prerequisites:**
+
 1. **Onboard for Perpetuals** - Complete onboarding via Coinbase Advanced Trade UI
 2. **Transfer Margin** - Move USDC to "Perpetuals Portfolio" for margin
 3. **API Trading** - Use iTrade to place orders with leverage parameter
 
 **Symbol Format:**
+
 - Spot: `BTC-USD`, `ETH-USD`
 - Perpetual: `BTC-PERP`, `ETH-PERP`
 
@@ -312,12 +329,12 @@ public async createOrder(
       base_size: quantity.toString(),
       limit_price: price?.toString() || _options.takeProfitPrice.toString(),
       stop_price: _options.takeProfitPrice.toString(),
-      stop_direction: side === OrderSide.BUY 
-        ? 'STOP_DIRECTION_STOP_DOWN' 
+      stop_direction: side === OrderSide.BUY
+        ? 'STOP_DIRECTION_STOP_DOWN'
         : 'STOP_DIRECTION_STOP_UP',
     };
   }
-  
+
   // ... rest of order creation
 }
 ```
@@ -361,18 +378,18 @@ export class MyFuturesStrategy extends BaseStrategy {
     klines?: Kline[];
   }): Promise<StrategyResult> {
     // ... analysis logic
-    
+
     if (shouldBuy) {
       return {
         action: 'buy',
         quantity: new Decimal(100),
         price: currentPrice,
-        tradeMode: 'isolated',  // Use isolated margin
-        leverage: 5,             // 5x leverage
+        tradeMode: 'isolated', // Use isolated margin
+        leverage: 5, // 5x leverage
         reason: 'Buy signal with 5x leverage',
       };
     }
-    
+
     return { action: 'hold' };
   }
 }
@@ -424,23 +441,23 @@ When this strategy generates a signal with `tradeMode: 'isolated'` and `leverage
 
 ### OKX Exchange
 
-| Symbol Type | Example | Default tdMode | Default Leverage |
-|-------------|---------|----------------|------------------|
-| SPOT | `BTC-USDT` | `cash` | N/A (1x) |
-| SWAP/FUTURES | `BTC-USDT-SWAP` | `isolated` | None (must set explicitly) |
+| Symbol Type  | Example         | Default tdMode | Default Leverage           |
+| ------------ | --------------- | -------------- | -------------------------- |
+| SPOT         | `BTC-USDT`      | `cash`         | N/A (1x)                   |
+| SWAP/FUTURES | `BTC-USDT-SWAP` | `isolated`     | None (must set explicitly) |
 
 ### Binance Exchange
 
-| Symbol Type | Example | Default Mode | Default Leverage |
-|-------------|---------|--------------|------------------|
-| SPOT | `BTCUSDT` | `cash` | N/A (1x) |
-| FUTURES | `BTCUSDT` (futures) | Reserved | Reserved |
+| Symbol Type | Example             | Default Mode | Default Leverage |
+| ----------- | ------------------- | ------------ | ---------------- |
+| SPOT        | `BTCUSDT`           | `cash`       | N/A (1x)         |
+| FUTURES     | `BTCUSDT` (futures) | Reserved     | Reserved         |
 
 ### Coinbase Exchange
 
-| Symbol Type | Example | Default Mode | Default Leverage |
-|-------------|---------|--------------|------------------|
-| SPOT | `BTC-USDT` | `cash` | N/A (1x) |
+| Symbol Type | Example    | Default Mode | Default Leverage |
+| ----------- | ---------- | ------------ | ---------------- |
+| SPOT        | `BTC-USDT` | `cash`       | N/A (1x)         |
 
 ## Error Handling
 
@@ -513,10 +530,10 @@ try {
 ✅ **Core types updated** - `StrategyResult` includes `tradeMode`, `leverage`, `stopLoss`, and `takeProfit`  
 ✅ **Interfaces updated** - `ExecuteOrderParameters` and `IExchange.createOrder` (renamed `stopPrice` → `stopLoss`)  
 ✅ **TradingEngine updated** - Passes `tradeMode`, `leverage`, `stopLoss`, and `takeProfit` through  
-✅ **OKX Exchange implemented** - Full support for `tdMode`, `lever`, `slTriggerPx`, `tpTriggerPx`  
+✅ **OKX Exchange implemented** - Full support for `tdMode`, `slTriggerPx`, `tpTriggerPx`; leverage goes through `POST /api/v5/account/set-leverage`, never an order-body field  
 ✅ **Binance Exchange implemented** - Full leverage support via `/fapi/v1/leverage` + margin type + stop loss + take profit  
-✅ **Coinbase Exchange implemented** - Perpetual futures with per-order `leverage` and `margin_type` parameters (up to 10x)  
-✅ **System integration verified** - All packages rebuilt successfully  
+✅ **Coinbase Exchange implemented** - Perpetual futures with per-order `leverage` (up to 10x) and a fixed (non-selectable) `margin_type`; the venue is cross-only  
+✅ **System integration verified** - All packages rebuilt successfully
 
 ## Future Enhancements
 
@@ -558,8 +575,8 @@ return {
   action: 'buy',
   quantity: new Decimal(100),
   price: targetPrice,
-  tradeMode: 'isolated',  // Required for leverage
-  leverage: 5,             // Desired leverage (2-125x on OKX)
+  tradeMode: 'isolated', // Required for leverage
+  leverage: 5, // Desired leverage (2-125x on OKX)
 };
 ```
 
@@ -567,47 +584,126 @@ return {
 
 ### OKX Parameters
 
-| iTrade Parameter | OKX Parameter | Description |
-|------------------|---------------|-------------|
-| `tradeMode: 'cash'` | `tdMode: 'cash'` | Spot trading (no margin) |
-| `tradeMode: 'isolated'` | `tdMode: 'isolated'` | Isolated margin |
-| `tradeMode: 'cross'` | `tdMode: 'cross'` | Cross margin |
-| `leverage: 5` | `lever: '5'` | Leverage multiplier |
-| `stopLoss` | `slTriggerPx` | Stop loss trigger price |
-| `takeProfitPrice` | `tpTriggerPx` | Take profit trigger price |
-| `price` (with SL) | `slOrdPx` | Stop loss order price |
-| `price` (with TP) | `tpOrdPx` | Take profit order price |
+| iTrade Parameter        | OKX Parameter                                      | Description                               |
+| ----------------------- | -------------------------------------------------- | ----------------------------------------- |
+| `tradeMode: 'cash'`     | `tdMode: 'cash'`                                   | Spot trading (no margin)                  |
+| `tradeMode: 'isolated'` | `tdMode: 'isolated'`                               | Isolated margin                           |
+| `tradeMode: 'cross'`    | `tdMode: 'cross'`                                  | Cross margin                              |
+| `leverage: 5`           | POST `/api/v5/account/set-leverage` (`lever: '5'`) | Set before order; skipped for reduce-only |
+| `stopLoss`              | `slTriggerPx`                                      | Stop loss trigger price                   |
+| `takeProfitPrice`       | `tpTriggerPx`                                      | Take profit trigger price                 |
+| `price` (with SL)       | `slOrdPx`                                          | Stop loss order price                     |
+| `price` (with TP)       | `tpOrdPx`                                          | Take profit order price                   |
 
 ### Binance Parameters
 
-| iTrade Parameter | Binance Parameter | Description |
-|------------------|-------------------|-------------|
-| `tradeMode: 'isolated'` | POST `/fapi/v1/marginType` (`ISOLATED`) | Set before order |
-| `tradeMode: 'cross'` | POST `/fapi/v1/marginType` (`CROSSED`) | Set before order |
-| `leverage: 5` | POST `/fapi/v1/leverage` | Set before order |
-| `stopLoss` | `stopPrice` | Stop loss trigger price |
-| `takeProfitPrice` (no price) | `type: 'TAKE_PROFIT'` | Market order at TP |
-| `takeProfitPrice` + `price` | `type: 'TAKE_PROFIT_LIMIT'` | Limit order at TP |
-| `takeProfitPrice` | `stopPrice` | Trigger price |
+| iTrade Parameter             | Binance Parameter                       | Description             |
+| ---------------------------- | --------------------------------------- | ----------------------- |
+| `tradeMode: 'isolated'`      | POST `/fapi/v1/marginType` (`ISOLATED`) | Set before order        |
+| `tradeMode: 'cross'`         | POST `/fapi/v1/marginType` (`CROSSED`)  | Set before order        |
+| `leverage: 5`                | POST `/fapi/v1/leverage`                | Set before order        |
+| `stopLoss`                   | `stopPrice`                             | Stop loss trigger price |
+| `takeProfitPrice` (no price) | `type: 'TAKE_PROFIT'`                   | Market order at TP      |
+| `takeProfitPrice` + `price`  | `type: 'TAKE_PROFIT_LIMIT'`             | Limit order at TP       |
+| `takeProfitPrice`            | `stopPrice`                             | Trigger price           |
 
 ### Coinbase Parameters
 
-| iTrade Parameter | Coinbase Parameter | Description |
-|------------------|-------------------|-------------|
-| `leverage: 5` | `leverage: "5"` | Per-order leverage (up to 10x) |
-| `tradeMode: 'isolated'` | `margin_type: "ISOLATED"` | Isolated margin |
-| `tradeMode: 'cross'` | `margin_type: "CROSS"` | Cross margin |
-| `stopLoss` | N/A | ❌ Not supported |
-| `takeProfitPrice` | `stop_limit_stop_limit_gtc` | Stop limit order |
-| `takeProfitPrice` | `stop_price` | Trigger price |
-| `price` | `limit_price` | Limit order price |
-| `side + TP` | `stop_direction` | `STOP_UP` or `STOP_DOWN` |
+| iTrade Parameter     | Coinbase Parameter                    | Description                                             |
+| -------------------- | ------------------------------------- | ------------------------------------------------------- |
+| `leverage: 5`        | `leverage: "5"`                       | Per-order leverage (up to 10x)                          |
+| `tradeMode` (either) | `margin_type: "ISOLATED"` (hardcoded) | Ignored — venue is cross-only; reported back as `cross` |
+| `stopLoss`           | N/A                                   | ❌ Not supported                                        |
+| `takeProfitPrice`    | `stop_limit_stop_limit_gtc`           | Stop limit order                                        |
+| `takeProfitPrice`    | `stop_price`                          | Trigger price                                           |
+| `price`              | `limit_price`                         | Limit order price                                       |
+| `side + TP`          | `stop_direction`                      | `STOP_UP` or `STOP_DOWN`                                |
+
+> Note: the connector sends a hardcoded `margin_type: 'ISOLATED'` field on perpetual
+> orders, but Coinbase's perpetual venue is cross-margin only — its connector reports
+> `marginType: 'cross'` for the resulting position. Because a requested mode would
+> therefore misreport the position, the web order form does not offer a mode selector
+> for Coinbase (see the 2026-10-01 section below).
 
 **Important Notes:**
+
 - Perpetual futures symbols: `BTC-PERP`, `ETH-PERP`
 - Spot symbols: `BTC-USD`, `ETH-USD`
 - Leverage: Up to 10x (specified per-order in request body)
 - Requires onboarding and USDC in perpetuals portfolio
+
+## Margin-Mode Audit & Fix (2026-10-01)
+
+**Symptom.** Strategy 634 (`2026-10-WLD-L-1`, `LadderEntrySingleTPStrategy`,
+WLDUSDC perp, `leverage: 5`) runs with `tradeMode: 'isolated'` in its signals,
+yet the position on Binance came back as `cross`.
+
+**Root cause.** `tradeMode` was never applied on its own. In
+`BinanceExchange.createOrder` the margin type was set _inside_ `setLeverage()`,
+and `setLeverage()` is only called when the requested leverage differs from the
+in-process `leverageCache`:
+
+| Order # | requested leverage matches cache? | `setLeverage()` | margin type applied |
+| ------- | --------------------------------- | --------------- | ------------------- |
+| 1st     | no                                | yes             | yes                 |
+| 2nd+    | yes                               | skipped         | **never**           |
+
+`setMarginType()` additionally swallowed every error except `-4046`, so a `-4047`
+rejection (open orders still reference the symbol) or `-4048` (a position still
+exists) was invisible. Binance USDⓈ-M accounts default to **CROSSED** while the
+OKX connector defaults to `ISOLATED` — hence a Binance-only drift.
+
+**Fix.**
+
+1. `BinanceExchange.createOrder` asserts the margin type on every futures order
+   that requests one (`POST /fapi/v1/marginType`), independent of the leverage
+   cache. It stays non-throwing (margin type must never block an order) but a
+   rejection is now logged once per symbol instead of being discarded; `-4046`
+   stays quiet and also re-arms the warning (a mode flipped by hand is corrected
+   by the next order, and a later drift warns again). Reduce-only (closing)
+   orders are skipped — the symbol still holds the position being closed, so the
+   switch could only be rejected. Note the request is deliberately re-sent on
+   every opening order rather than cached: a process-lifetime cache is exactly
+   what caused this bug, and an operator who flips a symbol's mode by hand would
+   otherwise never be corrected. **Accepted cost:** a ladder strategy placing N
+   entries adds N margin-type requests (one extra round-trip per opening order),
+   which is the price of trusting the exchange state over a local cache.
+   The same reduce-only rule now covers leverage: `setLeverage` is not called for
+   a reduce-only order (Binance), and OKX skips its account-level leverage call —
+   a close must never re-lever the position it is reducing. This holds at the
+   connector level, so it also protects callers that bypass the web service.
+2. Manual (web) orders resolve the mode/leverage through one pure function,
+   `resolvePerpOrderSettings` (`apps/web/lib/services/perp-order-settings.ts`):
+   Binance perpetual opening orders ask for `ISOLATED` when the caller omits a
+   mode. No default mode is sent for OKX (its connector has its own `tdMode`
+   default, and an explicitly requested mode is still passed through), Coinbase (cross-only perp
+   market, so a "requested mode" would misreport the position; leverage defaults
+   to 5x) or spot symbols, and nothing is ever sent for a `CLOSE_*` order.
+3. The web transaction form exposes **Margin Mode** (`isolated` / `cross`,
+   default `isolated`; Binance + OKX only — Coinbase's perp market is cross-only
+   and its connector reports `marginType: 'cross'`, so the field is neither shown
+   nor sent) and **Leverage** when the symbol is a perpetual **opening** order.
+   Leverage accepts whole numbers, 1–125 for Binance/OKX and 1–10 for Coinbase
+   (its perp cap), and is only validated when it would actually be sent — a value
+   left over from an earlier perpetual entry must never block a spot or a
+   `CLOSE_*` submit. Closing actions hide both fields and submit unchanged.
+4. Audit trail: `orders.tradeMode` (text) and `orders.leverage` (`numeric`, so a
+   fractional value from any venue cannot break the insert) record what the order
+   _asked_ for, on opening perpetual orders. This is the request, not proof the
+   exchange applied it — when Binance rejects the switch the previous mode stays
+   in place. Later partial order updates never clear the columns (`OrderRepository.save`
+   upserts only the columns it is given).
+
+**Out of scope / manual.** An existing position's margin mode cannot be switched
+through this path: Binance requires the symbol to have no position and no open
+orders. Cross positions already open (e.g. WLDUSDC) are switched by hand on the
+exchange; the position page has no margin-mode editor.
+
+**Deploy note.** Both columns are additive and `orders` is large, so the columns
+arrive via the CD schema sync (`schema_check` in `.github/workflows/deploy.yml`
+triggers the schema-migrator for changes under `packages/<pkg>/src/entities/`)
+before the app containers are recreated. TypeORM selects every mapped column, so
+app code deployed ahead of the sync would fail on a missing column.
 
 ## References
 

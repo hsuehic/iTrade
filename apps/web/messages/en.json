@@ -1574,7 +1574,15 @@
           "loadingBalance": "Loading balance...",
           "balanceUnavailable": "Balance unavailable",
           "price": "Price",
-          "pricePlaceholder": "e.g., 42000"
+          "pricePlaceholder": "e.g., 42000",
+          "tradeMode": "Margin Mode",
+          "tradeModePlaceholder": "Select margin mode",
+          "marginModeIsolated": "Isolated",
+          "marginModeCross": "Cross",
+          "marginModeHint": "Perpetual only. Binance requires the symbol to have no position and no open orders to switch.",
+          "leverage": "Leverage",
+          "leveragePlaceholder": "e.g., 10",
+          "leverageHint": "Perpetual only. Leave empty for the default: the exchange's current leverage, or 5x on Coinbase."
         },
         "actions": {
           "submit": "Place Order",

@@ -224,6 +224,8 @@ export class OrderTracker {
         strategyId: strategyId, // ✅ Set strategyId directly
         strategyType: order.strategyType, // ✅ Save strategy type
         strategyName: order.strategyName, // ✅ Save strategy name
+        tradeMode: order.tradeMode, // 🆕 Requested trading mode (audit)
+        leverage: order.leverage, // 🆕 Requested leverage (audit)
       });
 
       if (isNew) {

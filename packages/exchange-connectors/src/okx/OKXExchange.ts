@@ -250,8 +250,11 @@ export class OKXExchange extends BaseExchange {
       tdMode = isSwap ? TradeMode.ISOLATED : TradeMode.CASH;
     }
 
-    // Ensure leverage is set at account level for SWAP/FUTURES before placing order
-    if (isSwap && options?.leverage) {
+    // Ensure leverage is set at account level for SWAP/FUTURES before placing order.
+    // A reduce-only order must not re-lever the position it is reducing, so it is
+    // skipped here — and the order body carries no `lever` at all (OKX has no
+    // such request parameter, see below), so a close cannot change the leverage.
+    if (isSwap && options?.leverage && !options?.reduceOnly) {
       const current = this.leverageCache.get(instId);
       if (current !== options.leverage) {
         await this.setOkxLeverage(instId, options.leverage, tdMode);
@@ -267,11 +270,17 @@ export class OKXExchange extends BaseExchange {
       sz: orderSize.toString(), // 🆕 Use calculated contract size
     };
 
-    // Set leverage and posSide for SWAP/FUTURES
+    // Set posSide for SWAP/FUTURES.
+    //
+    // ⚠️ `lever` is deliberately NOT sent on the order body: OKX v5 documents no
+    // `lever` request parameter for POST /api/v5/trade/order (Place order) — the
+    // order-response examples that mention `lever` are response fields. Leverage
+    // is only settable through POST /api/v5/account/set-leverage, which
+    // `setOkxLeverage` above already calls for an opening order. Sending it here
+    // was dead weight at best; on a reduce-only close it would read as a
+    // re-lever of the position being reduced, which the Binance connector
+    // explicitly avoids.
     if (isSwap) {
-      if (options?.leverage) {
-        orderData.lever = options.leverage.toString();
-      }
       // 🔄 Using net mode (one-way position mode) for automatic position management
       // In net mode:
       // - BUY automatically increases long position or decreases short position
