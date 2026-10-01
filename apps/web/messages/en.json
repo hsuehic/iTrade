@@ -1634,6 +1634,15 @@
     },
     "internalTransfers": {
       "title": "Internal Transfers",
+      "newTransfer": "New transfer",
+      "pickAccount": {
+        "title": "Select an account",
+        "description": "Choose which account the wallet transfer should run on.",
+        "placeholder": "Select an account",
+        "empty": "No account supports internal transfers yet.",
+        "cancel": "Cancel",
+        "continue": "Continue"
+      },
       "history": {
         "title": "Internal Transfer History",
         "empty": "No internal transfers found for the selected exchange.",
@@ -1674,7 +1683,8 @@
         "FUNDING": "Funding",
         "SPOT": "Spot",
         "PERPETUAL": "Perpetual",
-        "TRADING": "Trading"
+        "TRADING": "Trading",
+        "EARN": "Earn"
       },
       "status": {
         "COMPLETED": "Completed",

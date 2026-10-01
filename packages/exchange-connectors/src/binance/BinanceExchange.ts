@@ -1053,6 +1053,7 @@ export class BinanceExchange extends BaseExchange {
       AccountWalletType.FUNDING,
       AccountWalletType.SPOT,
       AccountWalletType.PERPETUAL,
+      AccountWalletType.EARN,
     ];
   }
 
@@ -1180,6 +1181,14 @@ export class BinanceExchange extends BaseExchange {
       throw new Error('Source and destination wallets must be different');
     }
 
+    // 🆕 Simple Earn is NOT part of the Universal Transfer `type` enum — moving
+    // funds in/out of Earn means subscribing to / redeeming from the asset's
+    // *flexible* product. Locked products have a fixed term and cannot be
+    // redeemed on demand, so only the Spot <-> Earn route is exposed.
+    if (from === AccountWalletType.EARN || to === AccountWalletType.EARN) {
+      return this.transferSimpleEarn(asset, amount, from, to);
+    }
+
     const type = BinanceExchange.TRANSFER_TYPE_MAP[`${from}_${to}`];
     if (!type) {
       throw new Error(`Binance does not support transferring from ${from} to ${to}`);
@@ -1201,6 +1210,107 @@ export class BinanceExchange extends BaseExchange {
     }
 
     return { id: String(response.data.tranId) };
+  }
+
+  // 🆕 Move funds between Spot and Simple Earn. Binance keys subscribe/redeem
+  // on the *flexible product id* of the asset, so the product must be resolved
+  // first; both endpoints are signed POSTs with the parameters in the query
+  // string (same convention as /sapi/v1/asset/transfer above).
+  private async transferSimpleEarn(
+    asset: string,
+    amount: Decimal,
+    from: AccountWalletType,
+    to: AccountWalletType,
+  ): Promise<TransferFundsResult> {
+    const upperAsset = asset.toUpperCase();
+
+    // NOTE: this route guard intentionally duplicates the @itrade/core route
+    // table. transfer-service gates with isTransferRouteSupported first, but
+    // the connector must stay safe for direct callers (strategies, scripts)
+    // that bypass the web service — do not delete one side as "redundant".
+    const intoEarn = to === AccountWalletType.EARN;
+
+    if (intoEarn && from !== AccountWalletType.SPOT) {
+      throw new Error(
+        'Binance only supports transferring into Earn from the Spot wallet',
+      );
+    }
+    if (!intoEarn && to !== AccountWalletType.SPOT) {
+      throw new Error(
+        'Binance only supports transferring out of Earn to the Spot wallet',
+      );
+    }
+
+    const productId = await this.getFlexibleEarnProductId(upperAsset);
+
+    // Redemption lands back in the Spot wallet: Binance's flexible redeem has
+    // no explicitly-tested `destAccount` override here, so we rely on the
+    // endpoint's documented default rather than sending an unverified value.
+
+    if (intoEarn) {
+      const signedParams = this.signRequest({
+        productId,
+        amount: amount.toString(),
+        timestamp: Date.now(),
+      });
+      const response = await this.httpClient.post(
+        '/sapi/v1/simple-earn/flexible/subscribe',
+        null,
+        { params: signedParams },
+      );
+      const purchaseId = response.data?.purchaseId;
+      if (purchaseId === undefined) {
+        throw new Error(
+          `Binance Earn subscribe failed: ${JSON.stringify(response.data)}`,
+        );
+      }
+      return { id: String(purchaseId) };
+    }
+
+    const signedParams = this.signRequest({
+      productId,
+      amount: amount.toString(),
+      // FAST = instant redemption, only valid for flexible products.
+      type: 'FAST',
+      timestamp: Date.now(),
+    });
+    const response = await this.httpClient.post(
+      '/sapi/v1/simple-earn/flexible/redeem',
+      null,
+      { params: signedParams },
+    );
+    const redeemId = response.data?.redeemId;
+    if (redeemId === undefined) {
+      throw new Error(`Binance Earn redeem failed: ${JSON.stringify(response.data)}`);
+    }
+    return { id: String(redeemId) };
+  }
+
+  // 🆕 Resolve the flexible Simple Earn product id for an asset — Binance's
+  // subscribe/redeem endpoints take `productId`, not the asset symbol. The
+  // product list is paginated (max 100 rows per page).
+  private async getFlexibleEarnProductId(asset: string): Promise<string> {
+    const size = 100;
+    // The `asset` filter means this is in practice always a single page; the
+    // bound only stops a runaway loop if Binance ever keeps returning full
+    // pages (a short page is what normally terminates the walk).
+    const MAX_PAGES = 50;
+
+    for (let current = 1; current <= MAX_PAGES; current++) {
+      const params = this.signRequest({ asset, current, size, timestamp: Date.now() });
+      const response = await this.httpClient.get('/sapi/v1/simple-earn/flexible/list', {
+        params,
+      });
+      const rows: any[] = response.data?.rows || [];
+      const match = rows.find(
+        (row: any) => String(row.asset || '').toUpperCase() === asset && row.productId,
+      );
+      if (match) return String(match.productId);
+
+      if (rows.length < size) break;
+    }
+
+    throw new Error(`Binance has no flexible Simple Earn product for ${asset}`);
   }
 
   public async getPositions(): Promise<Position[]> {

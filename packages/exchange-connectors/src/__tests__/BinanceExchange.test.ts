@@ -344,11 +344,12 @@ describe('BinanceExchange transferFunds', () => {
     (exchange as any).httpClient.post = postSpy;
   });
 
-  it('exposes FUNDING, SPOT, and PERPETUAL as supported wallets', () => {
+  it('exposes FUNDING, SPOT, PERPETUAL, and EARN as supported wallets', () => {
     expect(exchange.getSupportedTransferWallets()).toEqual([
       AccountWalletType.FUNDING,
       AccountWalletType.SPOT,
       AccountWalletType.PERPETUAL,
+      AccountWalletType.EARN,
     ]);
   });
 
@@ -507,7 +508,7 @@ describe('BinanceExchange Simple Earn (EARN wallet)', () => {
     );
   });
 
-  it('keeps EARN out of the transferable wallet list', () => {
-    expect(exchange.getSupportedTransferWallets()).not.toContain(AccountWalletType.EARN);
+  it('lists EARN as transferable (via flexible subscribe/redeem)', () => {
+    expect(exchange.getSupportedTransferWallets()).toContain(AccountWalletType.EARN);
   });
 });

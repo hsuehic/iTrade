@@ -29,6 +29,14 @@ export async function getTransferWallets(exchange: string): Promise<AccountWalle
   return transferService.getSupportedTransferWallets(exchange);
 }
 
+// 🆕 The form drives its From/To dropdowns off routes, not a flat wallet list —
+// e.g. Binance allows Spot <-> Earn but Funding <-> Earn is not a real route.
+export async function getTransferRoutes(
+  exchange: string,
+): Promise<transferService.TransferRoute[]> {
+  return transferService.getSupportedTransferRoutes(exchange);
+}
+
 export async function getWalletBalances(
   accountId: number,
   walletType: AccountWalletType,

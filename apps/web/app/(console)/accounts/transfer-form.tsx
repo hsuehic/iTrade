@@ -24,11 +24,11 @@ import {
 } from '@/components/ui/select';
 
 import {
-  getTransferWallets,
+  getTransferRoutes,
   getWalletBalances,
   transferFunds,
 } from '@/app/actions/transfers';
-import { AccountWalletType } from '@itrade/core';
+import { AccountWalletType, TransferRoute } from '@itrade/core';
 import {
   getExchangeDisplayName,
   SupportedExchange,
@@ -39,6 +39,11 @@ export interface TransferFormAccount {
   exchange: string;
   accountId: string;
 }
+
+// 🆕 Exchanges whose connector implements wallet-to-wallet transfers. Kept
+// here (next to the form) so the Accounts page and the Internal Transfers page
+// share one list instead of each hardcoding it.
+export const TRANSFER_CAPABLE_EXCHANGES = new Set(['binance', 'okx']);
 
 interface TransferFormProps {
   open: boolean;
@@ -52,10 +57,12 @@ const WALLET_LABEL_KEY: Record<AccountWalletType, string> = {
   [AccountWalletType.SPOT]: 'wallets.spot',
   [AccountWalletType.PERPETUAL]: 'wallets.perpetual',
   [AccountWalletType.TRADING]: 'wallets.trading',
-  // EARN is read-only (never in getSupportedTransferWallets), listed only to
-  // keep this Record exhaustive over the enum.
   [AccountWalletType.EARN]: 'wallets.earn',
 };
+
+// 🆕 Dropdowns are driven by the routes @itrade/core declares for the exchange
+// (not a flat wallet list) because not every pair is valid — e.g. Binance
+// supports Spot <-> Earn but there is no Funding <-> Earn route.
 
 export function TransferForm({
   open,
@@ -65,7 +72,7 @@ export function TransferForm({
 }: TransferFormProps) {
   const t = useTranslations('accounts.transfer');
 
-  const [wallets, setWallets] = useState<AccountWalletType[]>([]);
+  const [routes, setRoutes] = useState<TransferRoute[]>([]);
   // 🆕 Must be `undefined` (not `''`) when unset — Radix's Select treats an
   // empty-string controlled value as its own internal "no selection"
   // sentinel, which breaks selection entirely (clicking an item never
@@ -99,10 +106,10 @@ export function TransferForm({
     setAmount('');
     setAvailable(null);
 
-    getTransferWallets(accountExchange)
-      .then(setWallets)
+    getTransferRoutes(accountExchange)
+      .then(setRoutes)
       .catch(() => {
-        setWallets([]);
+        setRoutes([]);
         toast.error(t('errors.loadWalletsFailed'));
       });
   }, [open, accountId, accountExchange, t]);
@@ -136,8 +143,10 @@ export function TransferForm({
 
   if (!account) return null;
 
-  const toOptions = wallets.filter((w) => w !== from);
-  const fromOptions = wallets.filter((w) => w !== to);
+  const fromOptions = Array.from(new Set(routes.map((route) => route.from)));
+  const toOptions = from
+    ? routes.filter((route) => route.from === from).map((route) => route.to)
+    : [];
 
   const canSubmit =
     !!from && !!to && from !== to && !!asset.trim() && !!amount && Number(amount) > 0;
@@ -182,7 +191,18 @@ export function TransferForm({
               <Label>{t('fields.from')}</Label>
               <Select
                 value={from}
-                onValueChange={(value) => setFrom(value as AccountWalletType)}
+                onValueChange={(value) => {
+                  const nextFrom = value as AccountWalletType;
+                  setFrom(nextFrom);
+                  // Drop a now-invalid destination instead of leaving a pair
+                  // the exchange would reject (e.g. Funding -> Earn).
+                  setTo((prevTo) =>
+                    prevTo &&
+                    routes.some((route) => route.from === nextFrom && route.to === prevTo)
+                      ? prevTo
+                      : undefined,
+                  );
+                }}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder={t('fields.selectWallet')} />

@@ -1634,6 +1634,15 @@
     },
     "internalTransfers": {
       "title": "内部划转",
+      "newTransfer": "发起划转",
+      "pickAccount": {
+        "title": "选择账户",
+        "description": "选择要在哪个账户上执行钱包划转。",
+        "placeholder": "选择账户",
+        "empty": "暂无支持内部划转的账户。",
+        "cancel": "取消",
+        "continue": "继续"
+      },
       "history": {
         "title": "内部划转记录",
         "empty": "所选交易所暂无内部划转记录。",
@@ -1674,7 +1683,8 @@
         "FUNDING": "资金账户",
         "SPOT": "现货账户",
         "PERPETUAL": "永续合约账户",
-        "TRADING": "交易账户"
+        "TRADING": "交易账户",
+        "EARN": "理财账户"
       },
       "status": {
         "COMPLETED": "已完成",

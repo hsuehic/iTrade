@@ -21,7 +21,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { AccountForm, type AccountFormInitialData } from './account-form';
-import { TransferForm, type TransferFormAccount } from './transfer-form';
+import {
+  TRANSFER_CAPABLE_EXCHANGES,
+  TransferForm,
+  type TransferFormAccount,
+} from './transfer-form';
 import { deleteAccount } from '@/app/actions/accounts';
 import { toast } from 'sonner';
 import { Plus, Trash2, Edit, ArrowRightLeft, History } from 'lucide-react';
@@ -35,7 +39,6 @@ import type { AccountListItem } from '@/lib/types/account';
 // Only exchanges with a real internal wallet-transfer API expose the
 // Transfer action. See apps/web/lib/services/transfer-service.ts for why
 // Coinbase is excluded.
-const TRANSFER_CAPABLE_EXCHANGES = new Set(['binance', 'okx']);
 
 export function AccountList({ initialAccounts }: { initialAccounts: AccountListItem[] }) {
   const t = useTranslations('accounts.list');

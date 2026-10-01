@@ -341,8 +341,9 @@ export enum AccountWalletType {
   PERPETUAL = 'PERPETUAL',
   TRADING = 'TRADING',
   // 🆕 Earn/savings products (Binance Simple Earn, OKX Simple Earn savings).
-  // Read-only for balances — never a valid transfer source/destination, so it
-  // must not appear in any getSupportedTransferWallets() result.
+  // Transferable only through each exchange's own subscribe/redeem API — it is
+  // NOT part of any exchange's wallet-transfer enum, so connectors must route
+  // Earn pairs separately (see BinanceExchange/OKXExchange.transferFunds).
   EARN = 'EARN',
 }
 

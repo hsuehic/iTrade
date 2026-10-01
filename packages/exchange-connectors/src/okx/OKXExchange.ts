@@ -889,8 +889,11 @@ export class OKXExchange extends BaseExchange {
   // combines SPOT + SWAP. Only Funding <-> Trading is therefore a real
   // transfer here; SPOT and PERPETUAL both resolve to the same account id,
   // so a "spot to perpetual" request would be a same-account no-op.
+  // 🆕 Simple Earn savings balances (type EARN) are held outside the
+  // Funding/Trading asset accounts and are only reachable through
+  // `/api/v5/asset/purchase-redempt` — see transferSavings().
   public getSupportedTransferWallets(): AccountWalletType[] {
-    return [AccountWalletType.FUNDING, AccountWalletType.TRADING];
+    return [AccountWalletType.FUNDING, AccountWalletType.TRADING, AccountWalletType.EARN];
   }
 
   private toOkxTransferAccountId(walletType: AccountWalletType): string {
@@ -926,6 +929,13 @@ export class OKXExchange extends BaseExchange {
   public async transferFunds(params: TransferFundsParams): Promise<TransferFundsResult> {
     const { asset, amount, from, to } = params;
 
+    // 🆕 Simple Earn savings are not part of the asset-transfer `from`/`to`
+    // account enum — moving in/out is a purchase/redemption, and it only ever
+    // settles against the Trading account.
+    if (from === AccountWalletType.EARN || to === AccountWalletType.EARN) {
+      return this.transferSavings(asset, amount, from, to);
+    }
+
     const fromAccount = this.toOkxTransferAccountId(from);
     const toAccount = this.toOkxTransferAccountId(to);
 
@@ -951,6 +961,65 @@ export class OKXExchange extends BaseExchange {
     }
 
     return { id: response.data.data?.[0]?.transId };
+  }
+
+  // 🆕 Purchase (Trading -> Earn) or redeem (Earn -> Trading) Simple Earn
+  // savings via `/api/v5/asset/purchase-redempt`. OKX only settles savings
+  // against the Trading account, and the response carries no transaction id —
+  // callers fall back to a locally generated record id.
+  private async transferSavings(
+    asset: string,
+    amount: Decimal,
+    from: AccountWalletType,
+    to: AccountWalletType,
+  ): Promise<TransferFundsResult> {
+    const intoEarn = to === AccountWalletType.EARN;
+    const fromEarn = from === AccountWalletType.EARN;
+
+    // NOTE: this route guard intentionally duplicates the @itrade/core route
+    // table. transfer-service gates with isTransferRouteSupported first, but
+    // the connector must stay safe for direct callers (strategies, scripts)
+    // that bypass the web service — do not delete one side as "redundant".
+
+    if (fromEarn === intoEarn) {
+      throw new Error('Source and destination wallets must be different');
+    }
+
+    // OKX savings always settle against the Trading account. SPOT and PERPETUAL
+    // are accepted because they are the very same unified Trading account;
+    // anything else (Funding included) is rejected explicitly rather than
+    // silently mapped through toOkxTransferAccountId().
+    const counterparty = intoEarn ? from : to;
+    const SAVINGS_ACCOUNTS: AccountWalletType[] = [
+      AccountWalletType.TRADING,
+      AccountWalletType.SPOT,
+      AccountWalletType.PERPETUAL,
+    ];
+    if (!SAVINGS_ACCOUNTS.includes(counterparty)) {
+      throw new Error(
+        `OKX savings transfers only settle against the Trading account, got "${counterparty}"`,
+      );
+    }
+
+    const payload = {
+      ccy: asset.toUpperCase(),
+      amt: amount.toString(),
+      side: intoEarn ? 'purchase' : 'redempt',
+    };
+    const signedData = this.signOKXRequest(
+      'POST',
+      '/api/v5/asset/purchase-redempt',
+      payload,
+    );
+    const response = await this.httpClient.post(signedData.endpoint, signedData.body, {
+      headers: signedData.headers,
+    });
+
+    if (response.data.code !== '0') {
+      throw new Error(`OKX API error: ${response.data.msg}`);
+    }
+
+    return {};
   }
 
   public async getPositions(): Promise<Position[]> {

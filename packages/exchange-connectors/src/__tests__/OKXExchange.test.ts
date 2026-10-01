@@ -78,10 +78,11 @@ describe('OKXExchange transferFunds', () => {
     (exchange as any).httpClient.post = postSpy;
   });
 
-  it('exposes only FUNDING and TRADING as supported wallets (unified account mode)', () => {
+  it('exposes FUNDING, TRADING, and EARN as supported wallets (unified account mode)', () => {
     expect(exchange.getSupportedTransferWallets()).toEqual([
       AccountWalletType.FUNDING,
       AccountWalletType.TRADING,
+      AccountWalletType.EARN,
     ]);
   });
 
@@ -167,7 +168,7 @@ describe('OKXExchange Simple Earn (EARN wallet)', () => {
     );
   });
 
-  it('keeps EARN out of the transferable wallet list', () => {
-    expect(exchange.getSupportedTransferWallets()).not.toContain(AccountWalletType.EARN);
+  it('lists EARN as transferable (via savings purchase/redemption)', () => {
+    expect(exchange.getSupportedTransferWallets()).toContain(AccountWalletType.EARN);
   });
 });

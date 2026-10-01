@@ -50,6 +50,11 @@ interface InternalTransfer {
 
 interface InternalTransfersTableProps {
   selectedExchange: string;
+  /**
+   * 🆕 Bump to force a refetch — the page increments this after a transfer
+   * started from its "New transfer" action so the new row shows up.
+   */
+  refreshKey?: number;
 }
 
 type StatusFilter = 'all' | 'COMPLETED' | 'PENDING' | 'FAILED' | 'CANCELED';
@@ -68,6 +73,7 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
 
 export function InternalTransfersTable({
   selectedExchange,
+  refreshKey = 0,
 }: InternalTransfersTableProps) {
   const locale = useLocale();
   const t = useTranslations('portfolio.internalTransfers');
@@ -136,7 +142,15 @@ export function InternalTransfersTable({
     return () => {
       cancelled = true;
     };
-  }, [selectedExchange, timeRange, status, debouncedKeyword, debouncedMin, debouncedMax]);
+  }, [
+    selectedExchange,
+    timeRange,
+    status,
+    debouncedKeyword,
+    debouncedMin,
+    debouncedMax,
+    refreshKey,
+  ]);
 
   const getStatusColor = (s: string) => {
     switch (s.toUpperCase()) {

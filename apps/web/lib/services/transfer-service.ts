@@ -5,8 +5,12 @@ import Decimal from 'decimal.js';
 import {
   AccountWalletType,
   Balance,
+  getSupportedTransferRoutes,
+  getSupportedTransferWallets,
   IExchange,
   InternalTransfer,
+  isTransferRouteSupported,
+  supportsTransfers,
   TransferStatus,
 } from '@itrade/core';
 import { AccountInfoEntity } from '@itrade/data-manager';
@@ -14,36 +18,16 @@ import { AccountInfoEntity } from '@itrade/data-manager';
 import { getDataManager } from '@/lib/data-manager';
 import { createExchangeConnection } from './order-execution-service';
 
-// 🆕 Static capability map for internal (wallet-to-wallet) transfers.
-//
-// Binance keeps Funding, Spot, and Perpetual (USDⓈ-M futures) as three
-// distinct wallets and supports every pairwise combination through its
-// Universal Transfer API.
-//
-// OKX accounts in this app run in unified/multi-currency margin mode, so
-// Spot and Perpetual balances already live in the same "Trading" account —
-// only Funding <-> Trading is a real transfer there (see
-// OKXExchange.getSupportedTransferWallets for details).
-//
-// Coinbase is intentionally omitted: its retail spot wallet and INTX
-// perpetual portfolio are different products without a reliable, well-tested
-// transfer endpoint in this codebase.
-const TRANSFER_CAPABLE_EXCHANGES: Record<string, AccountWalletType[]> = {
-  binance: [
-    AccountWalletType.FUNDING,
-    AccountWalletType.SPOT,
-    AccountWalletType.PERPETUAL,
-  ],
-  okx: [AccountWalletType.FUNDING, AccountWalletType.TRADING],
+// Internal-transfer capabilities live in `@itrade/core` so the server-side
+// validation here and the client transfer form read one shared table — see
+// packages/core/src/internalTransferRoutes.ts.
+export {
+  getSupportedTransferRoutes,
+  getSupportedTransferWallets,
+  isTransferRouteSupported,
+  supportsTransfers,
 };
-
-export function getSupportedTransferWallets(exchange: string): AccountWalletType[] {
-  return TRANSFER_CAPABLE_EXCHANGES[exchange.toLowerCase()] ?? [];
-}
-
-export function supportsTransfers(exchange: string): boolean {
-  return getSupportedTransferWallets(exchange).length > 0;
-}
+export type { TransferRoute } from '@itrade/core';
 
 async function getOwnedAccount(
   userId: string,
@@ -128,8 +112,7 @@ export async function executeTransfer(
     throw new Error('Source and destination wallets must be different');
   }
 
-  const supported = getSupportedTransferWallets(account.exchange);
-  if (!supported.includes(input.from) || !supported.includes(input.to)) {
+  if (!isTransferRouteSupported(account.exchange, input.from, input.to)) {
     throw new Error(`${account.exchange} does not support this transfer route`);
   }
 
