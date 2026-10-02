@@ -705,6 +705,20 @@ export class BinanceExchange extends BaseExchange {
         );
       }
 
+      // -4168: the account runs in Multi-Assets mode, where per-symbol isolated
+      // margin is not allowed at all. No symbol-level fix satisfies Binance —
+      // the account-level setting has to change first (Binance Futures →
+      // Preferences → Multi-Assets Mode), so it gets its own reason rather than
+      // being lumped into 'unknown'.
+      if (code === -4168) {
+        throw new MarginModeSwitchError(
+          'multi-assets-mode',
+          `Binance refused the margin-mode switch for ${normalizedSymbol}: the account is in Multi-Assets mode, where isolated margin is unavailable (code -4168: ${message})`,
+          exchangeCode,
+          httpStatus,
+        );
+      }
+
       throw new MarginModeSwitchError(
         'unknown',
         `Binance rejected the margin-mode switch for ${normalizedSymbol} (code ${

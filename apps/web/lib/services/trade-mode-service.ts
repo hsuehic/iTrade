@@ -264,6 +264,8 @@ function toTradeModeError(error: unknown, symbol: string, exchange: string): Err
         return new TradeModeError('position-open', error.message, error.httpStatus);
       case 'open-orders':
         return new TradeModeError('open-orders', error.message, error.httpStatus);
+      case 'multi-assets-mode':
+        return new TradeModeError('multi-assets-mode', error.message, error.httpStatus);
       case 'unsupported':
         return new TradeModeError(
           'unsupported-exchange',

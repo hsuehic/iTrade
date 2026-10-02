@@ -319,6 +319,7 @@ export interface MarginModeSwitchResult {
 export type MarginModeSwitchReason =
   | 'position-open'
   | 'open-orders'
+  | 'multi-assets-mode'
   | 'unsupported'
   | 'unknown';
 

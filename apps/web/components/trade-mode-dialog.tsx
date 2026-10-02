@@ -223,7 +223,9 @@ export function TradeModeDialog({
             ? t('errors.positionOpen')
             : data.code === 'open-orders'
               ? t('errors.openOrders')
-              : data.error || t('errors.switchFailed'),
+              : data.code === 'multi-assets-mode'
+                ? t('errors.multiAssetsMode')
+                : data.error || t('errors.switchFailed'),
         );
         return;
       }

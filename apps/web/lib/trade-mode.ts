@@ -58,6 +58,8 @@ export function canonicalPerpSymbol(symbol: string): string {
  * - 'unsupported-exchange' → the exchange has no margin-mode switch at all;
  * - 'not-perpetual' → margin mode is meaningless for a spot symbol;
  * - 'invalid-input' → missing/malformed request body;
+ * - 'multi-assets-mode' → the account runs in Multi-Assets mode, where
+ *   per-symbol isolated margin is unavailable (Binance -4168);
  * - 'exchange-error' → anything else the exchange reported.
  */
 export type TradeModeErrorCode =
@@ -66,6 +68,7 @@ export type TradeModeErrorCode =
   | 'not-perpetual'
   | 'position-open'
   | 'open-orders'
+  | 'multi-assets-mode'
   | 'exchange-error';
 
 /**

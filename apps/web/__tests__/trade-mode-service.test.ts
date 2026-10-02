@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarginModeSwitchError } from '@itrade/core';
+import { mapTradeModeError } from '@/lib/trade-mode-errors';
 
 /**
  * Server-side guards for the position page's margin-mode switch. The dialog
@@ -212,6 +213,28 @@ describe('setSymbolTradeMode', () => {
 
     await expect(setSymbolTradeMode('user-1', input)).rejects.toMatchObject({
       code: 'open-orders',
+    });
+    expect(disconnect).toHaveBeenCalled();
+  });
+
+  it('classifies the -4168 account-level refusal as multi-assets-mode, mapped to a 409', async () => {
+    // Produced by BinanceExchange when the account runs in Multi-Assets mode.
+    // Dropping this case would send the reason through the default branch and
+    // turn the operator-actionable copy back into an 'exchange-error' 502.
+    setMarginMode.mockRejectedValue(
+      new MarginModeSwitchError(
+        'multi-assets-mode',
+        'Binance refused the margin-mode switch for WLDUSDC: the account is in Multi-Assets mode (code -4168)',
+        '-4168',
+      ),
+    );
+
+    const error = await setSymbolTradeMode('user-1', input).catch((e) => e);
+
+    expect(error).toMatchObject({ code: 'multi-assets-mode' });
+    expect(mapTradeModeError(error)).toMatchObject({
+      status: 409,
+      code: 'multi-assets-mode',
     });
     expect(disconnect).toHaveBeenCalled();
   });

@@ -33,6 +33,11 @@ describe('mapTradeModeError', () => {
     expect(
       mapTradeModeError(new TradeModeError('open-orders', 'cancel them')).status,
     ).toBe(409);
+    // The account-level refusal (Binance -4168, Multi-Assets mode) is actionable
+    // by the operator, so it is a 409 with its own code, not a generic 502.
+    expect(
+      mapTradeModeError(new TradeModeError('multi-assets-mode', 'disabled')).status,
+    ).toBe(409);
   });
 
   it('keeps a credential failure a 401 instead of a 502', () => {

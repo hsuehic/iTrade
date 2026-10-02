@@ -235,6 +235,31 @@ describe('TradeModeDialog', () => {
     expect(toastSuccess).not.toHaveBeenCalled();
   });
 
+  it('surfaces the account-level Multi-Assets refusal with its own copy', async () => {
+    // Binance -4168 on a flat symbol: nothing to close or cancel, the ACCOUNT
+    // setting blocks isolated margin. Showing the generic "failed to switch"
+    // here is what the operator hit in prod, so the code must have its own copy.
+    global.fetch = mockFetch({
+      ok: false,
+      status: 409,
+      body: {
+        error:
+          'Binance refused the margin-mode switch for WLDUSDC: the account is in Multi-Assets mode (code -4168)',
+        code: 'multi-assets-mode',
+      },
+    });
+
+    render(<TradeModeDialog open onOpenChange={() => {}} positions={[]} />);
+
+    const { user } = await selectPairAndMode();
+    await user.click(screen.getByText('actions.confirm'));
+
+    await waitFor(() => {
+      expect(screen.getByText('errors.multiAssetsMode')).toBeInTheDocument();
+    });
+    expect(toastSuccess).not.toHaveBeenCalled();
+  });
+
   it('flags a position reported in the raw exchange symbol format', async () => {
     render(
       <TradeModeDialog

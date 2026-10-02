@@ -128,6 +128,28 @@ describe('BinanceExchange margin mode (manual switch)', () => {
     });
   });
 
+  it('classifies -4168 as multi-assets-mode, the account-level refusal', async () => {
+    // Seen in prod on WLDUSDC: the account runs in Multi-Assets mode, where
+    // Binance refuses isolated margin for ANY symbol — no symbol-level guard can
+    // satisfy it, so it must not surface as a generic "failed to switch".
+    postSpy.mockRejectedValue({
+      response: {
+        data: {
+          code: -4168,
+          msg: 'Unable to adjust to isolated-margin mode under the Multi-Assets mode.',
+        },
+      },
+    });
+
+    await expect(
+      exchange.setMarginMode('WLD/USDC:USDC', 'isolated'),
+    ).rejects.toMatchObject({
+      name: 'MarginModeSwitchError',
+      reason: 'multi-assets-mode',
+      exchangeCode: '-4168',
+    });
+  });
+
   it('keeps unknown rejections on the unknown reason with the exchange code', async () => {
     postSpy.mockRejectedValue({
       response: { data: { code: -1102, msg: 'Mandatory parameter was not sent.' } },

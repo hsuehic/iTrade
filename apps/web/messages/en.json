@@ -2151,6 +2151,7 @@
         "noPairs": "No perpetual pair available for this exchange",
         "positionOpen": "This pair still has an open position. Close the position and cancel its open orders before switching the margin mode.",
         "openOrders": "This pair still has open orders. Cancel them before switching the margin mode.",
+        "multiAssetsMode": "This Binance account is in Multi-Assets mode, where isolated margin is unavailable. Turn Multi-Assets mode off in Binance Futures settings (or keep the pair on cross margin) and try again.",
         "switchFailed": "Failed to switch the margin mode"
       }
     }

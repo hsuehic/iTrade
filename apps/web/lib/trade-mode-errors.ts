@@ -8,7 +8,8 @@ import { TradeModeError, type TradeModeErrorCode } from './trade-mode';
  * with a status the UI can act on:
  * - 400 malformed payload / exchange or symbol that has no margin mode;
  * - 409 the exchange refuses while the symbol holds a position or orders
- *   (that is the "close the position and cancel the orders first" case);
+ *   (that is the "close the position and cancel the orders first" case), or
+ *   while the account runs in Multi-Assets mode (isolated unavailable);
  * - 401 the exchange rejected the API credentials;
  * - 502 anything else, with the exchange's own message.
  */
@@ -66,7 +67,9 @@ export function mapTradeModeError(error: unknown): MappedTradeModeError {
     }
 
     const status =
-      error.code === 'position-open' || error.code === 'open-orders'
+      error.code === 'position-open' ||
+      error.code === 'open-orders' ||
+      error.code === 'multi-assets-mode'
         ? 409
         : error.code === 'exchange-error'
           ? 502

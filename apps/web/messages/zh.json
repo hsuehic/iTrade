@@ -2151,6 +2151,7 @@
         "noPairs": "该交易所没有可用的永续交易对",
         "positionOpen": "该交易对仍有持仓，请先平仓并撤销挂单后再切换保证金模式。",
         "openOrders": "该交易对仍有挂单，请先撤单后再切换保证金模式。",
+        "multiAssetsMode": "该 Binance 账户开启了多资产模式（Multi-Assets），无法使用逐仓保证金。请先在 Binance 合约设置里关闭多资产模式（或让该交易对保持全仓）后重试。",
         "switchFailed": "切换保证金模式失败"
       }
     }
