@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../models/admin_strategy.dart';
 import '../models/admin_user.dart';
 import '../models/admin_roi.dart';
 import '../models/trading_pair.dart';
@@ -15,6 +16,29 @@ class AdminOperationResult {
   const AdminOperationResult({required this.success, this.message});
 }
 
+/// Result of an admin strategy clone. `strategyName` is the name actually
+/// created by the API — it suffixes `_copy`, `_copy2`, … on a name collision,
+/// so it can differ from the name the admin typed.
+class AdminCloneResult {
+  final bool success;
+  final String? message;
+  final String? strategyName;
+
+  const AdminCloneResult({
+    required this.success,
+    this.message,
+    this.strategyName,
+  });
+}
+
+/// Candidate owners for the owner filter / clone dialog, plus whether the list
+/// was narrowed to users holding a bound exchange account (`bound`) or had to
+/// degrade to every user after the owners lookup failed.
+typedef AdminOwnerOptions = ({
+  List<AdminStrategyOwnerOption> options,
+  bool bound,
+});
+
 /// Calls the admin-only `/api/admin/*` endpoints of the web backend.
 ///
 /// Every endpoint is guarded server-side (session user must have the `admin`
@@ -26,9 +50,9 @@ class AdminService {
   static final AdminService instance = AdminService._internal();
 
   Options get _tolerant => Options(
-        followRedirects: false,
-        validateStatus: (int? s) => s != null && s < 500,
-      );
+    followRedirects: false,
+    validateStatus: (int? s) => s != null && s < 500,
+  );
 
   String? _errorMessage(Response<dynamic> res) {
     final data = res.data;
@@ -36,6 +60,15 @@ class AdminService {
       return data['error'].toString();
     }
     return null;
+  }
+
+  /// Tolerant integer reader: `count`/`page` metadata can arrive as a JSON
+  /// number or (some drivers) a numeric string, and a hard cast would throw and
+  /// take the whole page down with it.
+  static int? _intOrNull(Object? value) {
+    if (value == null) return null;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
   }
 
   // -------------------------------------------------------------- Users ---
@@ -86,7 +119,7 @@ class AdminService {
   /// whose total is NULL. Non-blocking — returns `{}` on any failure so the
   /// screen falls back to rendering N/A, matching the web console's behaviour.
   Future<Map<String, ({int exchangeAccounts, double? balance})>>
-      fetchExchangeStats() async {
+  fetchExchangeStats() async {
     try {
       final res = await ApiClient.instance.getJson(
         '/api/admin/users/exchange-stats',
@@ -107,8 +140,7 @@ class AdminService {
         } else if (rawBalance != null) {
           balance = double.tryParse(rawBalance.toString());
         }
-        result[key.toString()] =
-            (exchangeAccounts: accounts, balance: balance);
+        result[key.toString()] = (exchangeAccounts: accounts, balance: balance);
       });
       return result;
     } catch (_) {
@@ -134,10 +166,7 @@ class AdminService {
   }
 
   /// Bans or unbans a user.
-  Future<AdminOperationResult> setUserBanned(
-    String userId,
-    bool banned,
-  ) async {
+  Future<AdminOperationResult> setUserBanned(String userId, bool banned) async {
     try {
       final res = await ApiClient.instance.patchJson(
         '/api/admin/users/$userId',
@@ -290,6 +319,211 @@ class AdminService {
           .toList();
     } catch (_) {
       return null;
+    }
+  }
+
+  // -------------------------------------------- Strategy management ---
+
+  /// One page of the cross-user admin strategy listing from
+  /// `GET /api/admin/strategies` — search/token/owner/status/exchange filters,
+  /// server-side sort (incl. PnL/ROI) and pagination.
+  ///
+  /// Returns `null` on any transport/HTTP/parse failure so the screen can show
+  /// its error state, and a (possibly empty) [AdminStrategyPage] on success —
+  /// mirroring [fetchRoiAnalysis]'s null-means-failure contract.
+  Future<AdminStrategyPage?> fetchStrategies({
+    String search = '',
+    String symbol = '',
+    String userId = '',
+    String status = '',
+    String exchange = '',
+    String sortBy = 'createdAt',
+    String sortDirection = 'desc',
+    int page = 1,
+    int pageSize = 50,
+  }) async {
+    try {
+      final query = <String, dynamic>{
+        'sortBy': sortBy,
+        'sortDirection': sortDirection,
+        'page': page,
+        'pageSize': pageSize,
+      };
+      if (search.trim().isNotEmpty) query['search'] = search.trim();
+      if (symbol.trim().isNotEmpty) query['symbol'] = symbol.trim();
+      if (userId.trim().isNotEmpty) query['userId'] = userId.trim();
+      if (status.isNotEmpty && status != 'all') query['status'] = status;
+      if (exchange.isNotEmpty && exchange != 'all') {
+        query['exchange'] = exchange;
+      }
+      final res = await ApiClient.instance.getJson(
+        '/api/admin/strategies',
+        queryParameters: query,
+        options: _tolerant,
+      );
+      if (res.statusCode != 200 || res.data is! Map) return null;
+      final data = res.data as Map;
+      final rawStrategies = data['strategies'];
+      final strategies = rawStrategies is List
+          ? rawStrategies
+                .whereType<Map>()
+                .map(
+                  (s) => AdminStrategy.fromJson(Map<String, dynamic>.from(s)),
+                )
+                .toList()
+          : <AdminStrategy>[];
+      final total = _intOrNull(data['total']) ?? strategies.length;
+      return AdminStrategyPage(strategies: strategies, total: total);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Candidate owners for the owner filter and the clone dialog, from
+  /// `GET /api/admin/strategies/owners` (only users with an ACTIVE bound
+  /// exchange account — a target user without one can only ever receive a dead
+  /// STOPPED clone).
+  ///
+  /// On owners-lookup failure this degrades to the full user list
+  /// (`GET /api/admin/users?limit=1000`, `bound: false`) so the filter still
+  /// works, with the screen showing a warning — matching the web console. A
+  /// `null` return means BOTH lookups failed: the owner filter is unavailable.
+  Future<AdminOwnerOptions?> fetchStrategyOwners() async {
+    try {
+      final res = await ApiClient.instance.getJson(
+        '/api/admin/strategies/owners',
+        options: _tolerant,
+      );
+      if (res.statusCode == 200 && res.data is Map) {
+        final rawOwners = (res.data as Map)['owners'];
+        if (rawOwners is List) {
+          final options = rawOwners
+              .whereType<Map>()
+              .map(
+                (o) => AdminStrategyOwnerOption.fromJson(
+                  Map<String, dynamic>.from(o),
+                ),
+              )
+              .where((o) => o.id.isNotEmpty)
+              .toList();
+          return (options: options, bound: true);
+        }
+      }
+    } catch (_) {
+      // fall through to the all-users fallback below
+    }
+    try {
+      final users = await fetchUsers(limit: 1000);
+      if (users.isEmpty) return null;
+      return (
+        options: users
+            .map(
+              (u) => AdminStrategyOwnerOption(
+                id: u.id,
+                name: u.name.isEmpty ? null : u.name,
+                email: u.email.isEmpty ? null : u.email,
+              ),
+            )
+            .toList(),
+        bound: false,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Starts/stops/pauses any user's strategy via
+  /// `POST /api/admin/strategies/{id}/status`.
+  Future<AdminOperationResult> changeStrategyStatus(
+    int id,
+    String status,
+  ) async {
+    try {
+      final res = await ApiClient.instance.postJson(
+        '/api/admin/strategies/$id/status',
+        data: {'status': status},
+        options: _tolerant,
+      );
+      return AdminOperationResult(
+        success: res.statusCode == 200,
+        message: _errorMessage(res),
+      );
+    } catch (_) {
+      return const AdminOperationResult(success: false);
+    }
+  }
+
+  /// Applies a partial update to any user's strategy via
+  /// `PATCH /api/admin/strategies/{id}`. The caller is responsible for sending
+  /// only the changed fields (the web console does the same, to keep the audit
+  /// record readable). Active strategies are rejected server-side.
+  Future<AdminOperationResult> updateStrategy(
+    int id,
+    Map<String, dynamic> updates,
+  ) async {
+    try {
+      final res = await ApiClient.instance.patchJson(
+        '/api/admin/strategies/$id',
+        data: updates,
+        options: _tolerant,
+      );
+      return AdminOperationResult(
+        success: res.statusCode == 200,
+        message: _errorMessage(res),
+      );
+    } catch (_) {
+      return const AdminOperationResult(success: false);
+    }
+  }
+
+  /// Clones any user's strategy to another user via
+  /// `POST /api/admin/strategies/{id}/clone`.
+  Future<AdminCloneResult> cloneStrategy(
+    int id, {
+    required String targetUserId,
+    String? name,
+    bool start = false,
+  }) async {
+    try {
+      final res = await ApiClient.instance.postJson(
+        '/api/admin/strategies/$id/clone',
+        data: {
+          'targetUserId': targetUserId,
+          if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
+          'start': start,
+        },
+        options: _tolerant,
+      );
+      final data = res.data is Map ? res.data as Map : const {};
+      final strategy = data['strategy'];
+      final createdName = strategy is Map ? strategy['name']?.toString() : null;
+      return AdminCloneResult(
+        // The route answers 201 Created on success (not 200) — accepting any
+        // 2xx avoids reporting a successful clone as a failure, which would
+        // invite a retry and a duplicate `_copy`.
+        success: (res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 300,
+        message: _errorMessage(res),
+        strategyName: createdName,
+      );
+    } catch (_) {
+      return const AdminCloneResult(success: false);
+    }
+  }
+
+  /// Deletes any user's strategy (and its performance history, order links and
+  /// backtests) via `DELETE /api/admin/strategies/{id}`.
+  Future<AdminOperationResult> deleteStrategy(int id) async {
+    try {
+      final res = await ApiClient.instance.delete(
+        '/api/admin/strategies/$id',
+        options: _tolerant,
+      );
+      return AdminOperationResult(
+        success: res.statusCode == 200,
+        message: _errorMessage(res),
+      );
+    } catch (_) {
+      return const AdminOperationResult(success: false);
     }
   }
 }

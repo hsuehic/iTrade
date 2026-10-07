@@ -18,6 +18,7 @@ import '../widgets/app_switch.dart';
 import '../widgets/copy_text.dart';
 import '../widgets/responsive_layout_builder.dart';
 import 'admin_roi.dart';
+import 'admin_strategies.dart';
 import 'admin_trading_pairs.dart';
 import 'admin_users.dart';
 import 'change_password.dart';
@@ -1539,8 +1540,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   /// Admin section — only rendered for sessions whose user has the admin
-  /// role. Contains entries for the Trading Pairs and Users & Roles admin
-  /// modules. Returns an empty list for non-admins.
+  /// role. Contains entries for the Trading Pairs, Users & Roles, Strategy
+  /// Management and ROI Analysis admin modules. Returns an empty list for
+  /// non-admins.
   List<Widget> _buildAdminSection(bool isDark) {
     if (!_authService.isAdmin) {
       return const [];
@@ -1581,6 +1583,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (context) => const AdminUsersScreen(),
+                ),
+              );
+            },
+            isDark: isDark,
+          ),
+          _buildDivider(isDark),
+          _buildSettingTile(
+            icon: Icons.auto_graph_outlined,
+            titleKey: 'screen.admin_strategies.title',
+            titleFallback: 'Strategy Management',
+            subtitleKey: 'screen.profile.admin_strategies_subtitle',
+            subtitleFallback: 'Search, edit, clone & delete any user strategies',
+            trailing: Icons.chevron_right,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AdminStrategiesScreen(),
                 ),
               );
             },
