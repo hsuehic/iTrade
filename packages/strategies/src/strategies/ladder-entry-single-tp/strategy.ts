@@ -331,6 +331,32 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    */
   private _capPinnedSkipSince = 0;
 
+  /**
+   * Entry-0 price floor for the NEXT reset-driven reinitialization.
+   *
+   * Set by `checkAndPerformReset` when it releases a reset, to the price of the
+   * entry-0 order that reset is about to cancel, and consumed by the
+   * `_needsReinit` branch of `processInitialData` (and by the stuck-reinit
+   * fallback). While it is set, the ladder may not be re-anchored at a price that
+   * would place entry 0 BELOW it: a reset may only ever RAISE entry 0 (see the
+   * monotonic entry-price guard in `checkAndPerformReset`).
+   *
+   * It has to be carried across the cancel -> engine-reinit gap because the guard
+   * compares against the last *pushed* bid0, while the reinit re-anchors from a
+   * fresh REST fetch: the market may move in between, so the guard's approval
+   * alone does not prove the rebuilt price will be higher. It also covers the
+   * releases that never compute a price at all (bid0 unknown/stale, cap-pinned
+   * heartbeat). Cleared by `resetLadder()` - its single cleanup point - which also
+   * runs for a TP-filled new cycle (that one must re-anchor freely).
+   *
+   * Scope: IN-PROCESS only. The floor lives in memory, so a restart inside the
+   * cancel -> reinit window loses it (the fresh instance has nothing to compare
+   * against). Restart is outside the reported requirement; the reset path is not.
+   *
+   * `null` = no reset-driven reinit is pending.
+   */
+  private _reinitEntry0Floor: Decimal | null = null;
+
   /** Cap-fallback intervals tolerated before one re-anchoring reset. */
   private readonly _capPinnedGuardMaxSkips = 4;
 
@@ -604,6 +630,33 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   }
 
   /**
+   * Monotonic entry-0 rule: would a re-anchor at `candidateRef` place entry 0
+   * BELOW `floor` (the price of the entry-0 order a reset just cancelled)?
+   *
+   * A reset may only ever RAISE entry 0; a lower rebuild is refused so the
+   * existing, higher resting order is kept and the market's decline can reach it
+   * (see the block comment in `checkAndPerformReset`). Returns false - allow the
+   * re-anchor - when there is no floor, or the candidate price cannot be computed,
+   * so callers keep their default behaviour.
+   */
+  private entry0FloorBlocksReanchor(
+    candidateRef: Decimal,
+    floor: Decimal | null,
+  ): boolean {
+    if (!floor || !floor.gt(0) || !candidateRef.gt(0)) return false;
+    // maxEntryPrice is a RISK limit and outranks the no-lowering rule: if an
+    // operator lowered the cap below the floor, rebuilding down to the cap is
+    // required, not forbidden. (computeEntry0Price applies the cap itself, so the
+    // candidate it returns is already <= maxEntryPrice.)
+    const effectiveFloor =
+      this.maxEntryPrice.gt(0) && this.maxEntryPrice.lt(floor)
+        ? this.maxEntryPrice
+        : floor;
+    const candidateEntry0 = this.computeEntry0Price(candidateRef);
+    return candidateEntry0 !== null && candidateEntry0.lt(effectiveFloor);
+  }
+
+  /**
    * Compute the price of ladder step `i` given the entryBase price.
    *
    * With progressive stepValue (stepValueAdd / stepValueRatio):
@@ -843,6 +896,11 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     }
     this._trackedTpIds.clear();
     this.entry0PlacedTime = 0;
+    // A reset-driven reinit must not lower entry 0, so its floor is read (and
+    // here dropped) by whatever rebuild consumes it. resetLadder() is the single
+    // cleanup point: it also runs for a TP-filled new cycle, which must be free
+    // to re-anchor at the current market.
+    this._reinitEntry0Floor = null;
     this._currentAsk0 = new Decimal(0);
 
     // Cap previousCycleOrderIds to prevent unbounded growth over long-running
@@ -3212,29 +3270,48 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       // previous cycle (old ladder, legs, pending cancels) doesn't contaminate
       // the new cycle. resetLadder also adds all current order IDs to
       // previousCycleOrderIds to handle delayed WS pushes.
+      // The entry-0 floor is read before resetLadder() clears it: it is set by the
+      // reset that requested this reinit, and is null for a TP-filled new cycle
+      // (which must re-anchor freely).
+      const entry0Floor = this._reinitEntry0Floor;
       this.resetLadder();
       if (initialData.orderBook) {
         const freshBid0 = initialData.orderBook.bids?.[0]?.[0];
         if (freshBid0 && freshBid0.gt(0)) {
-          this.referencePrice = freshBid0;
-          // Keep _currentBid0 in sync with the anchor the ladder is about to be
-          // rebuilt from. It is deliberately NOT stamped as a fresh push (see
-          // _currentBid0Time): this value is the ladder's own anchor, so using it
-          // to prove that "the price did not change" would be self-comparison and
-          // would block every future reset. The guard treats an unstamped bid0 as
-          // unknown and falls back to the bid0-independent cap check instead.
-          this._currentBid0 = freshBid0;
-          // Explicit re-arm: the value above is the anchor the ladder is about to
-          // be rebuilt from, so a rebuild from it reproduces the current entry 0
-          // price BY CONSTRUCTION — it cannot serve as independent evidence that
-          // the market moved. (This path also cannot attest the payload's
-          // freshness.) Clearing the stamp makes "anchor value, no fresh push
-          // evidence" an explicit invariant instead of relying on the age
-          // arithmetic, so the guard falls through to the cap check below.
-          this._currentBid0Time = 0;
-          this._logger.info(
-            `[processInitialData] Reinit: updated reference price from fresh REST orderbook bid0: ${this.referencePrice.toString()}`,
-          );
+          if (this.entry0FloorBlocksReanchor(freshBid0, entry0Floor)) {
+            // Monotonic entry-0 rule: the fresh bid0 sits BELOW the price the
+            // cancelled entry 0 rested at, so re-anchoring here would lower it -
+            // the churn that keeps the order unfillable (strategies 632/636).
+            // Keep the previous reference price: the rebuild below then
+            // reproduces entry 0 at the floor instead of below it.
+            this._logger.warn(
+              `[processInitialData] Reinit: refusing to LOWER entry 0 - fresh ` +
+                `bid0 ${freshBid0.toString()} would rebuild it at ` +
+                `${this.computeEntry0Price(freshBid0)?.toString()}, below the ` +
+                `cancelled order's ${entry0Floor!.toString()}. Keeping ` +
+                `referencePrice=${this.referencePrice.toString()}.`,
+            );
+          } else {
+            this.referencePrice = freshBid0;
+            // Keep _currentBid0 in sync with the anchor the ladder is about to be
+            // rebuilt from. It is deliberately NOT stamped as a fresh push (see
+            // _currentBid0Time): this value is the ladder's own anchor, so using it
+            // to prove that "the price did not change" would be self-comparison and
+            // would block every future reset. The guard treats an unstamped bid0 as
+            // unknown and falls back to the bid0-independent cap check instead.
+            this._currentBid0 = freshBid0;
+            // Explicit re-arm: the value above is the anchor the ladder is about to
+            // be rebuilt from, so a rebuild from it reproduces the current entry 0
+            // price BY CONSTRUCTION — it cannot serve as independent evidence that
+            // the market moved. (This path also cannot attest the payload's
+            // freshness.) Clearing the stamp makes "anchor value, no fresh push
+            // evidence" an explicit invariant instead of relying on the age
+            // arithmetic, so the guard falls through to the cap check below.
+            this._currentBid0Time = 0;
+            this._logger.info(
+              `[processInitialData] Reinit: updated reference price from fresh REST orderbook bid0: ${this.referencePrice.toString()}`,
+            );
+          }
         } else {
           this._logger.warn(
             `[processInitialData] Reinit: orderbook fetched but bid0 is empty/invalid. Keeping stale reference: ${this.referencePrice.toString()}`,
@@ -4879,12 +4956,13 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    * 4. Entry 0 exists and its order status is NEW (unfilled, not even partial)
    * 5. No other entries are active (only entry 0 is pending)
    * 6. entry0PlacedTime > 0 and the elapsed time >= resetInterval minutes
-   * 7. The rebuild would actually change entry 0's price. Evaluated on two
+   * 7. The rebuild would actually RAISE entry 0's price. Evaluated on two
    *    evidence levels: with a fresh bid0 the rebuild price is computed exactly
-   *    (isEntry0PriceEffectivelyUnchanged + proximity), without one only the
-   *    bid0-independent case of an entry 0 already resting at maxEntryPrice is
-   *    treated as a no-op. Either way a reset that would re-place the same price
-   *    is skipped (bounded — see the cap-pinned heartbeat below).
+   *    (isEntry0PriceEffectivelyUnchanged then a monotonic non-decrease check),
+   *    without one only the bid0-independent case of an entry 0 already resting
+   *    at maxEntryPrice is treated as a no-op. Either way a reset that would
+   *    leave entry 0 at the same or a LOWER price is skipped (bounded for the
+   *    cap-pinned case — see the cap-pinned heartbeat below).
    *
    * Reset action:
    * 1. Cancel entry 0's order
@@ -4897,7 +4975,8 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    * The same "identical prices" logic is enforced by isEntry0PriceEffectivelyUnchanged
    * for dynamic-price strategies whose entry 0 price is pinned (maxEntryPrice cap) or
    * drifts sub-tick: a reset that cannot change the price is pure cancel/replace churn
-   * (extra race window, extra rate-limit pressure, no better fill).
+   * (extra race window, extra rate-limit pressure, no better fill). On top of that, a
+   * reset may never LOWER entry 0 — only raise it (see the monotonic entry-price guard).
    *
    * @returns StrategyResult[] containing cancel signal if reset was triggered, empty otherwise
    */
@@ -4960,23 +5039,37 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     if (!entry0Order) return [];
     if (entry0Order.status !== OrderStatus.NEW) return [];
 
-    // Proximity guard: only reset when the new entry 0 price would be closer
-    // to the current bid0 than the existing entry 0 price.
+    // Entry-price guard — monotonic, never lower entry 0 (user rule, 2026-10-10).
     //
-    // Without this, a reset may cancel an entry 0 that is already near bid0
-    // (e.g. price dropped toward the limit order) and rebuild the ladder at a
-    // price FURTHER from bid0 — a pointless churn that increases cancel/replace
-    // race risk (Strategies 468/473/505) without improving fill probability.
+    // A reset rebuilds the ladder from the *current* bid0, so a market drifting
+    // down drags entry 0 down with it on every resetInterval tick: the resting
+    // BUY is cancelled and re-placed a fresh gap% below the new, lower price,
+    // and the decline accrued since the last reset is thrown away. A market that
+    // drifts (rather than gaps) never travels a full gap% inside one interval,
+    // so the entry never fills. Production (strategies 632/636,
+    // 2026-10-ZAMA-L-1; entryGapValue=0.92 geometric, resetInterval=15min,
+    // maxEntryPrice=0.077 — the cap never bound, entry 0 rested well below it):
+    // entry 0 was cancelled and re-placed 20 consecutive times between 02:24 and
+    // 07:25 UTC on 2026-10-10 with executedQuantity=0 on every order, drifting
+    // 0.07628 -> 0.07545 as the market fell. Keeping the higher resting order
+    // lets the decline accumulate until it reaches the order — the only way a
+    // limit buy below a drifting market ever fills.
+    //
+    // Raising entry 0 stays allowed: when the market moves up the rebuild
+    // re-anchors the ladder a gap% below the new, higher price, so the entry
+    // keeps its fill probability instead of being stranded far below the market.
     //
     // The comparison uses the live bid0 from the most recent orderbook push
-    // (WebSocket or REST). The guard has two evidence levels, because a usable
-    // bid0 is not always available:
+    // (WebSocket or REST). Two evidence levels, because a usable bid0 is not
+    // always available:
     //
-    // 1. bid0 known and fresh → compare the rebuild exactly (price-unchanged
-    //    tolerance, then proximity) and skip only when a reset cannot improve
-    //    entry 0. Fresh = written within twice the reset interval; a bid0 left
-    //    behind by a dead feed would otherwise reproduce the current entry 0
-    //    price forever and block the reset indefinitely.
+    // 1. bid0 known and fresh → compute the rebuild price exactly and skip the
+    //    reset unless it is strictly HIGHER than the resting entry 0 price. The
+    //    1bp price-unchanged tolerance runs first, so sub-tick drift and a
+    //    maxEntryPrice-pinned entry 0 stay no-ops. Fresh = written within one
+    //    reset interval; a bid0 left behind by a dead feed would otherwise
+    //    reproduce the current entry 0 price forever and block the reset
+    //    indefinitely.
     // 2. bid0 unknown or stale → the rebuild price cannot be computed. The reset
     //    must stay possible, because its REST re-anchor is the only way the
     //    ladder learns a new price in that state and treating "no bid0" as
@@ -4986,10 +5079,10 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     //    intervals — one reset is then let through to re-anchor, so even a
     //    mis-modelled cap state cannot freeze the strategy.
     //
-    // Production symptom this addresses: the WLD ladder strategies with
-    // resetInterval=15min and the market above maxEntryPrice=0.44 for hours
-    // cancelled and re-placed the identical 0.44 entry every ~15-40 min with
-    // zero fills.
+    // Production symptom the price-unchanged part addresses: the WLD ladder
+    // strategies with resetInterval=15min and the market above
+    // maxEntryPrice=0.44 for hours cancelled and re-placed the identical 0.44
+    // entry every ~15-40 min with zero fills.
     const originEntry0Price = entry0Order.price;
     // One reset interval, not a multiple: `_currentBid0Time` is stamped only by
     // orderbook pushes (never by the init/reinit anchor writes — see the field
@@ -5021,26 +5114,37 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
           );
           return [];
         }
-        const originDist = originEntry0Price.sub(guardBid0).abs();
-        const newDist = newEntry0Price.sub(guardBid0).abs();
-        if (!newDist.lt(originDist)) {
+        // Monotonic guard: a reset may only RAISE entry 0 (see the block comment
+        // above). A lower rebuild price is refused — the existing, higher resting
+        // order is kept so the market's decline can reach it.
+        //
+        // EXCEPTION - maxEntryPrice tightening: maxEntryPrice is a RISK limit and
+        // outranks the no-lowering rule. If an operator lowers the cap below the
+        // price the resting entry 0 was placed at, that order already breaches its
+        // limit and refusing the reset would keep it there forever. Allow the
+        // reset — the rebuild then lands at the (lower) cap, which is the point.
+        if (this.maxEntryPrice.gt(0) && originEntry0Price.gt(this.maxEntryPrice)) {
+          this._logger.warn(
+            `[checkAndPerformReset] Entry-price guard: EXTRA reset allowed — the ` +
+              `resting entry0 ${originEntry0Price.toString()} is ABOVE the current ` +
+              `maxEntryPrice ${this.maxEntryPrice.toString()}; the risk cap outranks ` +
+              `the no-lowering rule.`,
+          );
+        } else if (!newEntry0Price.gt(originEntry0Price)) {
           // debug: same per-tick re-evaluation as the price-unchanged guard above.
           this._logger.debug(
-            `[checkAndPerformReset] Proximity guard: skipping reset — ` +
-              `new entry0 (${newEntry0Price.toString()}) is NOT closer to ` +
-              `bid0 (${guardBid0.toString()}) than current entry0 ` +
-              `(${originEntry0Price.toString()}). ` +
-              `newDist=${newDist.toString()} >= originDist=${originDist.toString()}`,
+            `[checkAndPerformReset] Entry-price guard: skipping reset — the ` +
+              `rebuild would LOWER entry0 (${originEntry0Price.toString()} -> ` +
+              `${newEntry0Price.toString()}); keeping the existing higher order ` +
+              `(bid0=${guardBid0.toString()}).`,
           );
           return [];
+        } else {
+          this._logger.debug(
+            `[checkAndPerformReset] Entry-price guard: reset approved — the rebuild ` +
+              `raises entry0 (${originEntry0Price.toString()} -> ${newEntry0Price.toString()}).`,
+          );
         }
-        this._logger.debug(
-          `[checkAndPerformReset] Proximity guard: reset approved — ` +
-            `new entry0 (${newEntry0Price.toString()}) is closer to bid0 ` +
-            `(${guardBid0.toString()}) than current entry0 ` +
-            `(${originEntry0Price.toString()}). ` +
-            `newDist=${newDist.toString()} < originDist=${originDist.toString()}`,
-        );
       }
     } else if (
       originEntry0Price &&
@@ -5127,6 +5231,14 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       );
     }
     this._capPinnedSkipSince = 0;
+    // Carry entry 0's pre-reset price across the cancel -> reinit gap. The guards
+    // above compare against the last *pushed* bid0, while the reinit re-anchors
+    // from a fresh REST fetch - between the two the market may move, and the
+    // bid0-unknown/stale and cap-pinned-heartbeat releases reach here without
+    // computing a price at all. Recording this floor makes "a reset may only RAISE
+    // entry 0" hold on the rebuild itself, not just on this decision.
+    this._reinitEntry0Floor =
+      originEntry0Price && originEntry0Price.gt(0) ? originEntry0Price : null;
     this._logger.info(
       `[checkAndPerformReset] Reset triggered: entry 0 has been pending for ${Math.floor(elapsedMs / 1000)}s ` +
         `(resetInterval=${this.resetInterval}min). Cancelling entry 0.`,
@@ -5466,10 +5578,28 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     if (this.pendingClientOrderIds.size > 0) return [];
 
     // Refresh the reference price from the live orderbook when in dynamic mode.
+    // Honour the same entry-0 floor as the reinit path: a reset-driven fallback
+    // must not rebuild below the price of the order that reset cancelled. (Today
+    // this branch is unreachable for a reset reinit -- pendingClientOrderIds keeps
+    // the reset's own cancel pending until a push the strategy no longer tracks --
+    // but keeping the check makes the invariant independent of that timing.)
     if (this.basePrice.lte(0) && this._currentBid0.gt(0)) {
-      this.referencePrice = this._currentBid0;
+      if (this.entry0FloorBlocksReanchor(this._currentBid0, this._reinitEntry0Floor)) {
+        this._logger.warn(
+          `[recoverStuckReinitialization] Refusing to LOWER entry 0 - live bid0 ` +
+            `${this._currentBid0.toString()} would rebuild it below the pending ` +
+            `reset's ${this._reinitEntry0Floor!.toString()}. Keeping ` +
+            `referencePrice=${this.referencePrice.toString()}.`,
+        );
+      } else {
+        this.referencePrice = this._currentBid0;
+      }
     }
+    // Do NOT clear the floor before the return below: if there is no usable
+    // reference price we bail out with _needsReinit still set, so the next
+    // attempt must still be protected by the same floor.
     if (this.referencePrice.lte(0)) return [];
+    this._reinitEntry0Floor = null;
 
     this._needsReinit = false;
     this._needsReinitTime = 0;

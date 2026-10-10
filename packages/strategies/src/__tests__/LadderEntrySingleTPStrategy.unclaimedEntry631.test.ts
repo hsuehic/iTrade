@@ -802,10 +802,11 @@ describe('LadderEntrySingleTPStrategy — Strategy 631 unclaimed-entry guards', 
       createDataUpdate([createOrder(e0, OrderSide.BUY, OrderStatus.NEW, 99, 0.1)]),
     );
 
-    // Entry 0 has rested for more than one interval, and bid0 has moved lower so
-    // the proximity guard approves a re-anchor.
+    // Entry 0 has rested for more than one interval, and bid0 has moved HIGHER so
+    // the entry-price guard approves a re-anchor (a lower bid0 would now be
+    // refused: entry 0 may only be raised by a reset, never lowered).
     internals.entry0PlacedTime = Date.now() - 61_000;
-    internals._currentBid0 = new Decimal(95);
+    internals._currentBid0 = new Decimal(105);
     internals._currentBid0Time = Date.now();
 
     const signals = internals.checkAndPerformReset();
@@ -966,10 +967,11 @@ describe('LadderEntrySingleTPStrategy — Strategy 631 unclaimed-entry guards', 
     );
     expect(I.steps[0].entryClientOrderId).toBe(e0);
 
-    // Entry 0 has rested past one interval and bid0 moved lower, so the proximity
-    // guard approves a reset — the same triggers as the call-site test above.
+    // Entry 0 has rested past one interval and bid0 moved HIGHER, so the
+    // entry-price guard approves a reset — the same triggers as the call-site
+    // test above (a lower bid0 would now be refused by the monotonic guard).
     I.entry0PlacedTime = Date.now() - 61_000;
-    I._currentBid0 = new Decimal(95);
+    I._currentBid0 = new Decimal(105);
     I._currentBid0Time = Date.now();
 
     const pass = await strategy.analyze(createDataUpdate([]));
@@ -1009,7 +1011,7 @@ describe('LadderEntrySingleTPStrategy — Strategy 631 unclaimed-entry guards', 
       createDataUpdate([createOrder(e0, OrderSide.BUY, OrderStatus.NEW, 99, 0.1)]),
     );
     I.entry0PlacedTime = Date.now() - 61_000;
-    I._currentBid0 = new Decimal(95);
+    I._currentBid0 = new Decimal(105);
     I._currentBid0Time = Date.now();
 
     const resetSignals = I.checkAndPerformReset();

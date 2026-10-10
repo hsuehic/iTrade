@@ -3594,11 +3594,12 @@ describe('LadderEntrySingleTPStrategy', () => {
       expect(cancels).toHaveLength(0);
     });
 
-    it('should reset entry0 when the new price would be closer to bid0', async () => {
+    it('should NOT reset entry0 when the rebuild would LOWER its price', async () => {
       // entryGapValue=2 (arithmetic), maxEntryPrice=88.
-      // Init bid0=100 -> uncapped entry0 = 98, capped to 88. |88-100|=12.
-      // bid0 drops to 85 via WS. New entry0 = 85-2=83 (uncapped, 83 < 88). |83-85|=2.
-      // 2 < 12 -> guard ALLOWS reset.
+      // Init bid0=100 -> uncapped entry0 = 98, capped to 88.
+      // bid0 drops to 85 via WS. New entry0 = 85-2=83 (uncapped, 83 < 88).
+      // 83 < 88 -> the rebuild would LOWER entry 0 -> guard REFUSES the reset
+      // and the existing 88 order stays, so the market's decline can reach it.
       const strategy = new LadderEntrySingleTPStrategy(
         createStrategyConfig({
           basePrice: 0,
@@ -3629,7 +3630,6 @@ describe('LadderEntrySingleTPStrategy', () => {
       );
 
       // Push orderbook: bid0 drops to 85
-      // New entry0 = 85-2=83 (uncapped, 83 < 88). |83-85|=2 < |88-100|=12 -> guard ALLOWS.
       await strategy.analyze({
         exchangeName: 'okx',
         symbol: 'BTC/USDT',
@@ -3649,7 +3649,64 @@ describe('LadderEntrySingleTPStrategy', () => {
 
       const signals = toSignalArray(result);
       const cancels = signals.filter((s) => s.action === 'cancel');
-      expect(cancels).toHaveLength(1); // entry0 cancelled for reset
+      expect(cancels).toHaveLength(0); // entry0 kept — never lowered
+      const entries = findEntrySignals(result);
+      expect(entries).toHaveLength(0); // and no replacement is placed
+    });
+
+    it('should reset entry0 when the rebuild would RAISE its price', async () => {
+      // entryGapValue=10 (arithmetic), no cap. Init bid0=100 -> entry0 = 90.
+      // bid0 rises to 105 -> new entry0 = 95 > 90 -> guard ALLOWS the reset so
+      // the ladder re-anchors a gap% below the new, higher price.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 5,
+          entryGapType: 'arithmetic',
+          entryGapValue: 10,
+          qtyPerStep: 0.1,
+          resetInterval: 1,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(100) }),
+      );
+      const initEntries = findEntrySignals(initResult);
+      expect(initEntries).toHaveLength(1);
+      expect(initEntries[0].price!.toNumber()).toBeCloseTo(90, 3);
+
+      const entry0Coid = initEntries[0].clientOrderId!;
+      await strategy.analyze(
+        createDataUpdate({
+          orders: [createOrder(entry0Coid, OrderSide.BUY, OrderStatus.NEW, 90, 0.1)],
+        }),
+      );
+
+      // bid0 rises to 105 -> new entry0 = 95 > 90 -> guard ALLOWS.
+      await strategy.analyze({
+        exchangeName: 'okx',
+        symbol: 'BTC/USDT',
+        orderbook: createOrderBook(105),
+      });
+
+      const oldNow = Date.now;
+      Date.now = () => oldNow() + 2 * 60 * 1000;
+      const priv = strategy as unknown as { _currentBid0Time: number };
+      // Pin the freshness stamp to the overridden clock (see the sub-tick test).
+      priv._currentBid0Time = Date.now();
+
+      const result = await strategy.analyze({
+        exchangeName: 'okx',
+        symbol: 'BTC/USDT',
+        orderbook: createOrderBook(105),
+      });
+      Date.now = oldNow;
+
+      const cancels = toSignalArray(result).filter((s) => s.action === 'cancel');
+      expect(cancels).toHaveLength(1); // entry0 cancelled for the upward reset
     });
 
     it('should NOT reset when the recomputed entry0 price only drifts sub-tick closer to bid0', async () => {
@@ -3919,6 +3976,391 @@ describe('LadderEntrySingleTPStrategy', () => {
       } finally {
         Date.now = oldNow;
       }
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Monotonic entry-0 floor across the cancel -> reinit gap
+  // ──────────────────────────────────────────────────────────────────────────
+
+  describe('Monotonic entry-0 floor (a reset reinit may never lower entry 0)', () => {
+    function makeStrategy(): LadderEntrySingleTPStrategy {
+      return new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 5,
+          entryGapType: 'arithmetic',
+          entryGapValue: 2,
+          qtyPerStep: 0.1,
+          resetInterval: 1,
+        }),
+      );
+    }
+
+    async function initAndReleaseReset(
+      strategy: LadderEntrySingleTPStrategy,
+    ): Promise<string> {
+      // Init bid0=100 -> entry0 = 100 - 2 = 98.
+      const initResult = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(100) }),
+      );
+      const entry0 = findEntrySignals(initResult)[0];
+      expect(entry0.price!.toNumber()).toBeCloseTo(98, 6);
+
+      await strategy.analyze(
+        createDataUpdate({
+          orders: [
+            createOrder(entry0.clientOrderId!, OrderSide.BUY, OrderStatus.NEW, 98, 0.1),
+          ],
+        }),
+      );
+
+      // bid0 rises to 105 -> rebuild = 103 > 98 -> the reset IS approved.
+      await strategy.analyze({
+        exchangeName: 'okx',
+        symbol: 'BTC/USDT',
+        orderbook: createOrderBook(105),
+      });
+
+      const oldNow = Date.now;
+      Date.now = () => oldNow() + 2 * 60 * 1000;
+      const resetResult = await strategy.analyze({
+        exchangeName: 'okx',
+        symbol: 'BTC/USDT',
+        orderbook: createOrderBook(105),
+      });
+      Date.now = oldNow;
+
+      expect(findCancelSignals(resetResult)).toHaveLength(1);
+      // The cancelled order's price is recorded as the floor for the rebuild.
+      expect(
+        (
+          strategy as unknown as { _reinitEntry0Floor: Decimal | null }
+        )._reinitEntry0Floor!.toNumber(),
+      ).toBeCloseTo(98, 6);
+      return entry0.clientOrderId!;
+    }
+
+    it('should keep entry 0 at the previous price when the reinit bid0 has fallen', async () => {
+      // The guard approves on the last *pushed* bid0, but the reinit re-anchors
+      // from a fresh REST fetch — here the market has fallen to 95 in between, so
+      // without the floor entry 0 would be rebuilt at 93 instead of 98. That is
+      // the churn that keeps the order unfillable (strategies 632/636).
+      const strategy = makeStrategy();
+      await initAndReleaseReset(strategy);
+
+      const reinitResult = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(95) }),
+      );
+
+      const entries = findEntrySignals(reinitResult);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].price!.toNumber()).toBeCloseTo(98, 6);
+      // The floor is consumed by the reinit that used it.
+      expect(
+        (strategy as unknown as { _reinitEntry0Floor: Decimal | null })
+          ._reinitEntry0Floor,
+      ).toBeNull();
+    });
+
+    it('should still re-anchor upward when the reinit bid0 has risen', async () => {
+      // The floor only blocks LOWERING: a rise still re-anchors the ladder below
+      // the new, higher market.
+      const strategy = makeStrategy();
+      await initAndReleaseReset(strategy);
+
+      const reinitResult = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(112) }),
+      );
+
+      const entries = findEntrySignals(reinitResult);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].price!.toNumber()).toBeCloseTo(110, 6); // 112 - 2
+    });
+
+    it('should reproduce the floor even when referencePrice was raised by an earlier reset', async () => {
+      // Verifies the assumption behind "keep the previous referencePrice": it is
+      // always the anchor of the currently resting entry 0, so rebuilding from it
+      // reproduces that price. Checked after a previous UPWARD re-anchor, i.e. when
+      // referencePrice is no longer the initial bid0.
+      const strategy = makeStrategy(); // gap 2 (arithmetic), no cap
+      const initResult = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(100) }),
+      );
+      const firstEntry = findEntrySignals(initResult)[0];
+      expect(firstEntry.price!.toNumber()).toBeCloseTo(98, 6);
+      await strategy.analyze(
+        createDataUpdate({
+          orders: [
+            createOrder(
+              firstEntry.clientOrderId!,
+              OrderSide.BUY,
+              OrderStatus.NEW,
+              98,
+              0.1,
+            ),
+          ],
+        }),
+      );
+
+      const oldNow = Date.now;
+      try {
+        // 1st reset: bid0 105 -> rebuild 103 > 98 -> approved -> ladder re-anchored
+        // at 105, so the resting entry 0 is now 103 and referencePrice is 105.
+        await strategy.analyze({
+          exchangeName: 'okx',
+          symbol: 'BTC/USDT',
+          orderbook: createOrderBook(105),
+        });
+        Date.now = () => oldNow() + 2 * 60 * 1000;
+        const first = await strategy.analyze({
+          exchangeName: 'okx',
+          symbol: 'BTC/USDT',
+          orderbook: createOrderBook(105),
+        });
+        expect(findCancelSignals(first)).toHaveLength(1);
+
+        const firstReinit = await strategy.processInitialData(
+          createInitialData({ orderBook: createOrderBook(105) }),
+        );
+        const raised = findEntrySignals(firstReinit)[0];
+        expect(raised.price!.toNumber()).toBeCloseTo(103, 6);
+        await strategy.analyze(
+          createDataUpdate({
+            orders: [
+              createOrder(
+                raised.clientOrderId!,
+                OrderSide.BUY,
+                OrderStatus.NEW,
+                103,
+                0.1,
+              ),
+            ],
+          }),
+        );
+
+        // 2nd reset: bid0 120 -> rebuild 118 > 103 -> approved, floor = 103.
+        await strategy.analyze({
+          exchangeName: 'okx',
+          symbol: 'BTC/USDT',
+          orderbook: createOrderBook(120),
+        });
+        Date.now = () => oldNow() + 4 * 60 * 1000;
+        const second = await strategy.analyze({
+          exchangeName: 'okx',
+          symbol: 'BTC/USDT',
+          orderbook: createOrderBook(120),
+        });
+        expect(findCancelSignals(second)).toHaveLength(1);
+
+        // The reinit's fresh bid0 has fallen to 100 -> rebuild would be 98 < 103.
+        const secondReinit = await strategy.processInitialData(
+          createInitialData({ orderBook: createOrderBook(100) }),
+        );
+        const kept = findEntrySignals(secondReinit)[0];
+        // Rebuilt from the retained referencePrice (105), not the fresh bid0 (100).
+        expect(kept.price!.toNumber()).toBeCloseTo(103, 6);
+      } finally {
+        Date.now = oldNow;
+      }
+    });
+
+    it('should keep entry 0 at the floor when a stale bid0 released the reset', async () => {
+      // bid0 unknown/stale and entry 0 not cap-pinned: the guard deliberately
+      // releases the reset (fail-safe for a dead feed). The floor must still stop
+      // the reinit from re-anchoring below the cancelled order.
+      const strategy = makeStrategy();
+      const initResult = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(100) }),
+      );
+      const entry0 = findEntrySignals(initResult)[0];
+      expect(entry0.price!.toNumber()).toBeCloseTo(98, 6);
+      await strategy.analyze(
+        createDataUpdate({
+          orders: [
+            createOrder(entry0.clientOrderId!, OrderSide.BUY, OrderStatus.NEW, 98, 0.1),
+          ],
+        }),
+      );
+
+      const oldNow = Date.now;
+      try {
+        // Feed goes dead: keep the last bid0 value but age the stamp past the
+        // reset interval so it counts as stale.
+        const priv = strategy as unknown as {
+          _currentBid0: Decimal;
+          _currentBid0Time: number;
+        };
+        priv._currentBid0 = new Decimal(100);
+        priv._currentBid0Time = oldNow() - 5 * 60 * 1000;
+
+        Date.now = () => oldNow() + 2 * 60 * 1000;
+        const resetResult = await strategy.analyze(createDataUpdate({}));
+        expect(findCancelSignals(resetResult)).toHaveLength(1);
+
+        // The reinit's REST bid0 has fallen to 90 -> rebuild would be 88.
+        const reinitResult = await strategy.processInitialData(
+          createInitialData({ orderBook: createOrderBook(90) }),
+        );
+        const entries = findEntrySignals(reinitResult);
+        expect(entries).toHaveLength(1);
+        expect(entries[0].price!.toNumber()).toBeCloseTo(98, 6); // not 88
+      } finally {
+        Date.now = oldNow;
+      }
+    });
+
+    it('should still reset when the resting entry 0 sits above a lowered maxEntryPrice', async () => {
+      // maxEntryPrice is a RISK limit and outranks the no-lowering rule. In
+      // production it reaches the guard via a restart: the new instance is built
+      // with the lowered cap while an order still rests at the old, higher price.
+      // Refusing the reset would leave that order above its limit forever.
+      const strategy = makeStrategy(); // no cap: init bid0=100 -> entry0 = 98
+      const initResult = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(100) }),
+      );
+      const entry0 = findEntrySignals(initResult)[0];
+      expect(entry0.price!.toNumber()).toBeCloseTo(98, 6);
+      await strategy.analyze(
+        createDataUpdate({
+          orders: [
+            createOrder(entry0.clientOrderId!, OrderSide.BUY, OrderStatus.NEW, 98, 0.1),
+          ],
+        }),
+      );
+
+      // Operator lowers the cap below the resting entry 0 (97 < 98). maxEntryPrice
+      // is assigned once from the parameters, so in production this state arises on
+      // a RESTART that constructs the instance with the new cap while an existing
+      // order still rests at the old, higher price; the field write below stands in
+      // for that, so the guard branch itself is exercised directly.
+      (strategy as unknown as { maxEntryPrice: Decimal }).maxEntryPrice = new Decimal(97);
+
+      // bid0 = 99 -> rebuild = min(99 - 2, 97) = 97, i.e. BELOW the resting 98.
+      await strategy.analyze({
+        exchangeName: 'okx',
+        symbol: 'BTC/USDT',
+        orderbook: createOrderBook(99),
+      });
+
+      const oldNow = Date.now;
+      Date.now = () => oldNow() + 2 * 60 * 1000;
+      const resetResult = await strategy.analyze({
+        exchangeName: 'okx',
+        symbol: 'BTC/USDT',
+        orderbook: createOrderBook(99),
+      });
+      Date.now = oldNow;
+
+      // The cap exception releases the reset even though the price goes DOWN.
+      expect(findCancelSignals(resetResult)).toHaveLength(1);
+
+      const reinitResult = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(99) }),
+      );
+      const entries = findEntrySignals(reinitResult);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].price!.toNumber()).toBeCloseTo(97, 6); // lowered to the cap
+    });
+
+    it('should never cancel while the market drifts down less than the gap per interval (production params)', async () => {
+      // Regression for the reported bug, with the real parameters of
+      // 2026-10-ZAMA-L-1 (strategies 632/636): 0.92% geometric entry gap, 15-minute
+      // reset cadence, cap 0.077 never binding. The market fell ~0.2% per interval,
+      // so each rebuild would re-place entry 0 ~0.92% below a market that never
+      // travelled that far inside one interval: 20 consecutive cancel/re-place
+      // cycles with zero fills. After the fix the first order simply stays put.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 3,
+          stepType: 'geometric',
+          stepValue: 1.12,
+          entryGapType: 'geometric',
+          entryGapValue: 0.92,
+          qtyPerStep: 1,
+          maxEntryPrice: 0.077,
+          resetInterval: 15,
+        }),
+      );
+
+      const firstBid0 = new Decimal('0.07699');
+      const initResult = await strategy.processInitialData(
+        createInitialData({
+          orderBook: createOrderBook(firstBid0.toNumber(), 0.001),
+        }),
+      );
+      const entry0 = findEntrySignals(initResult)[0];
+      const entry0Price = entry0.price!.toNumber();
+      expect(entry0Price).toBeCloseTo(firstBid0.mul(0.9908).toNumber(), 6);
+
+      await strategy.analyze(
+        createDataUpdate({
+          orders: [
+            createOrder(
+              entry0.clientOrderId!,
+              OrderSide.BUY,
+              OrderStatus.NEW,
+              entry0Price,
+              1,
+            ),
+          ],
+        }),
+      );
+
+      const oldNow = Date.now;
+      try {
+        let bid0 = firstBid0;
+        for (let i = 0; i < 5; i += 1) {
+          bid0 = bid0.mul('0.998'); // ~0.2% down, well inside the 0.92% gap
+          const now = oldNow() + (i + 1) * 16 * 60 * 1000;
+          Date.now = () => now;
+          const result = await strategy.analyze({
+            exchangeName: 'okx',
+            symbol: 'BTC/USDT',
+            orderbook: createOrderBook(bid0.toNumber(), 0.001),
+          });
+          expect(findCancelSignals(result)).toHaveLength(0);
+          expect(findEntrySignals(result)).toHaveLength(0);
+        }
+      } finally {
+        Date.now = oldNow;
+      }
+    });
+
+    it('should honour the floor in the stuck-reinit fallback (defensive)', async () => {
+      // The fallback is gated on an empty pendingClientOrderIds, which the reset's
+      // own cancel keeps non-empty, so a reset-driven reinit cannot normally reach
+      // it. Force that state to pin the defensive floor check.
+      const strategy = makeStrategy();
+      await initAndReleaseReset(strategy);
+
+      (
+        strategy as unknown as { pendingClientOrderIds: Set<string> }
+      ).pendingClientOrderIds.clear();
+      (strategy as unknown as { orders: Map<string, Order> }).orders.clear();
+
+      await strategy.analyze({
+        exchangeName: 'okx',
+        symbol: 'BTC/USDT',
+        orderbook: createOrderBook(90),
+      });
+      (strategy as unknown as { _needsReinitTime: number })._needsReinitTime =
+        Date.now() - 31_000;
+
+      const healed = (
+        strategy as unknown as { recoverStuckReinitialization(): StrategyResult[] }
+      ).recoverStuckReinitialization();
+
+      const entries = findEntrySignals(healed);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].price!.toNumber()).toBeCloseTo(98, 6); // not 88
+      expect(
+        (strategy as unknown as { _reinitEntry0Floor: Decimal | null })
+          ._reinitEntry0Floor,
+      ).toBeNull();
     });
   });
 
