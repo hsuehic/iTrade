@@ -307,4 +307,101 @@ describe('LadderEntrySingleTPStrategy — reset must not forget a LIVE TP (strat
       .map((s) => (s as unknown as { clientOrderId?: string }).clientOrderId);
     expect(cancels).toContain(tpId);
   });
+
+  it('full chain: reset → orphan cancel emitted → cancel confirmed → orphan cleared', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-11T08:48:44.877Z'));
+    const strategy = new LadderEntrySingleTPStrategy(createStrategyConfig());
+    const tpId = await reachLiveTrackedTp(strategy, false);
+
+    const internals = strategy as unknown as {
+      _trackedTpIds: Set<string>;
+      inventoryQty: Decimal;
+      vwap: Decimal;
+      resetLadder: () => void;
+      refreshTakeProfit: () => StrategyResult[];
+    };
+
+    internals.resetLadder();
+
+    // Pass 1 after the reset: the orphan gets a cancel signal. Whatever the
+    // same pass places must be a NEW id — never a re-place of the orphan.
+    internals.inventoryQty = new Decimal(0.3);
+    internals.vwap = new Decimal(101);
+    const pass1 = internals.refreshTakeProfit();
+    const cancels = pass1
+      .filter((s) => (s as unknown as { action?: string }).action === 'cancel')
+      .map((s) => (s as unknown as { clientOrderId?: string }).clientOrderId);
+    expect(cancels).toContain(tpId);
+    for (const placed of findTpSignals(pass1).map((s) => s.clientOrderId)) {
+      expect(placed).not.toBe(tpId);
+    }
+
+    // The venue confirms the withdraw: the terminal push is the only proof the
+    // orphan is gone, and it must clear the tracking entry (no leak, no retry).
+    await strategy.analyze(
+      createDataUpdate([
+        createOrder(tpId, OrderSide.SELL, OrderStatus.CANCELED, 102, 0.1, 0),
+      ]),
+    );
+    expect(internals._trackedTpIds.has(tpId)).toBe(false);
+  });
+
+  it('still cancels the orphan when the reset left zero inventory', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-11T08:48:44.877Z'));
+    const strategy = new LadderEntrySingleTPStrategy(createStrategyConfig());
+    const tpId = await reachLiveTrackedTp(strategy, true);
+
+    const internals = strategy as unknown as {
+      inventoryQty: Decimal;
+      vwap: Decimal;
+      resetLadder: () => void;
+      refreshTakeProfit: () => StrategyResult[];
+    };
+
+    internals.resetLadder();
+    // A reset normally zeroes inventory: the very next refresh must still reach
+    // the orphan. This is the `inventoryQty <= 0` branch of refreshTakeProfit →
+    // cancelAllTpOrders(), which sweeps `_trackedTpIds` — the set the fix puts
+    // the live TP back into. Without the fix that sweep has nothing to cancel.
+    internals.inventoryQty = new Decimal(0);
+    internals.vwap = new Decimal(0);
+
+    const cancels = internals
+      .refreshTakeProfit()
+      .filter((s) => (s as unknown as { action?: string }).action === 'cancel')
+      .map((s) => (s as unknown as { clientOrderId?: string }).clientOrderId);
+    expect(cancels).toContain(tpId);
+  });
+
+  it('blacklists a tracked id that is ALREADY terminal at reset time', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-11T08:48:00.000Z'));
+    const strategy = new LadderEntrySingleTPStrategy(createStrategyConfig());
+    const tpId = await reachLiveTrackedTp(strategy, true);
+
+    // Construct the defensive state the terminal guard exists for: an id that is
+    // both tracked AND known terminal. In production the terminal push usually
+    // clears `_trackedTpIds` first, so this branch is belt-and-braces — but it
+    // must still blacklist (never carry forward, never cancel) such an id.
+    const internals = strategy as unknown as {
+      _trackedTpIds: Set<string>;
+      orders: Map<string, Order>;
+      previousCycleOrderIds: Set<string>;
+      resetLadder: () => void;
+    };
+    const known = internals.orders.get(tpId);
+    expect(known).toBeDefined();
+    internals._trackedTpIds.add(tpId);
+    internals.orders.set(tpId, {
+      ...(known as Order),
+      status: OrderStatus.CANCELED,
+    } as unknown as Order);
+
+    internals.resetLadder();
+
+    expect(internals.previousCycleOrderIds.has(tpId)).toBe(true);
+    expect(internals._trackedTpIds.has(tpId)).toBe(false);
+  });
 });
