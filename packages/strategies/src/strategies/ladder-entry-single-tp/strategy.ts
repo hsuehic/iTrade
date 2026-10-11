@@ -809,15 +809,40 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   }
 
   private resetLadder(): void {
+    // 🆕 Incident 646 (2026-10-11, JCT/USDT): a TP that is still LIVE at reset
+    // time stays a real sell on the venue. Capture exactly which tracked TPs are
+    // NOT known-terminal BEFORE any book-keeping is wiped, so the sweeps below
+    // never blacklist them and they survive in `_trackedTpIds`. Otherwise the
+    // orphan loses every local reference (tpClientOrderId=null, this.orders
+    // cleared, _trackedTpIds cleared) and the next refreshTakeProfit() sees
+    // nothing to cancel and places a brand-new TP beside it — two live sells,
+    // with no cancel signal ever emitted (that is the 646 oversell).
+    // A TP whose push never arrived must be treated as live (unknown != dead).
+    const liveTpIdsAtReset = new Set<string>();
+    for (const coid of this._trackedTpIds) {
+      const tracked = this.orders.get(coid);
+      const knownTerminal =
+        tracked !== undefined &&
+        (tracked.status === OrderStatus.CANCELED ||
+          tracked.status === OrderStatus.REJECTED ||
+          tracked.status === OrderStatus.FILLED ||
+          tracked.status === OrderStatus.EXPIRED);
+      if (!knownTerminal) liveTpIdsAtReset.add(coid);
+    }
+
     // Record all current cycle's order IDs before clearing, so that delayed
-    // WS pushes for these orders are ignored in the new cycle.
+    // WS pushes for these orders are ignored in the new cycle. Live TPs are
+    // deliberately excluded: they are still open, not part of the ended cycle.
     for (const coid of this.orders.keys()) {
+      if (liveTpIdsAtReset.has(coid)) continue;
       this.previousCycleOrderIds.add(coid);
     }
     for (const coid of this.orderMetadataMap.keys()) {
+      if (liveTpIdsAtReset.has(coid)) continue;
       this.previousCycleOrderIds.add(coid);
     }
     for (const coid of this.pendingClientOrderIds) {
+      if (liveTpIdsAtReset.has(coid)) continue;
       this.previousCycleOrderIds.add(coid);
     }
 
@@ -891,10 +916,21 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // cannot drive the new cycle (mirrors the _pendingCancelTpIds handling in
     // handleTpFilled). The reinit path re-tracks the live TP it recovers from
     // fetchOpenOrders.
+    // 🆕 Incident 646 (2026-10-11): a TP that is still LIVE at reset time must
+    // NOT be forgotten — blacklisting it left a real sell on the venue with no
+    // local reference, and the next refreshTakeProfit() placed a second TP
+    // beside it without ever emitting a cancel (that is the 646 oversell).
+    // Keep such ids in _trackedTpIds so the pre-placement tracked-TP loop
+    // cancels them (and retries until the terminal push confirms) before any
+    // replacement is placed. Only ids known to be terminal are blacklisted.
     for (const coid of this._trackedTpIds) {
+      if (liveTpIdsAtReset.has(coid)) continue;
       this.previousCycleOrderIds.add(coid);
     }
     this._trackedTpIds.clear();
+    for (const coid of liveTpIdsAtReset) {
+      this._trackedTpIds.add(coid);
+    }
     this.entry0PlacedTime = 0;
     // A reset-driven reinit must not lower entry 0, so its floor is read (and
     // here dropped) by whatever rebuild consumes it. resetLadder() is the single
