@@ -102,6 +102,13 @@ interface OrdersTableProps {
   initialStatusFilter?: string;
   refreshToken?: number;
   initialEditOrderId?: string;
+  /**
+   * Admin viewing another user's strategy: order edit/cancel are owner-scoped
+   * server-side (`/api/orders/[id]` checks `order.userId === session.user.id`),
+   * so the row actions would always fail. Hide them instead of offering a
+   * button that 403s.
+   */
+  readOnly?: boolean;
 }
 
 const formatCurrency = (value: string | number | undefined) => {
@@ -266,6 +273,7 @@ export function OrdersTable({
   initialStatusFilter,
   refreshToken,
   initialEditOrderId,
+  readOnly = false,
 }: OrdersTableProps) {
   const t = useTranslations('orders');
   const locale = useLocale();
@@ -474,6 +482,7 @@ export function OrdersTable({
   }, []);
 
   React.useEffect(() => {
+    if (readOnly) return;
     if (!initialEditOrderId || hasOpenedInitialEdit) return;
     if (orders.length === 0) return;
 
@@ -482,7 +491,7 @@ export function OrdersTable({
       openEditDialog(target);
       setHasOpenedInitialEdit(true);
     }
-  }, [hasOpenedInitialEdit, initialEditOrderId, openEditDialog, orders]);
+  }, [hasOpenedInitialEdit, initialEditOrderId, openEditDialog, orders, readOnly]);
 
   React.useEffect(() => {
     if (!editingOrder) return;
@@ -904,6 +913,9 @@ export function OrdersTable({
         header: t('columns.actions'),
         cell: ({ row }) => {
           const order = row.original;
+          if (readOnly) {
+            return <span className="text-muted-foreground">-</span>;
+          }
           const canCancel = Boolean(order.exchange) && isCancelableStatus(order.status);
           const canEdit =
             canCancel &&
@@ -954,6 +966,7 @@ export function OrdersTable({
       handleCancelOrder,
       locale,
       openEditDialog,
+      readOnly,
       t,
     ],
   );

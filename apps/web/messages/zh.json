@@ -1893,6 +1893,7 @@
       "totalSoldDesc": "已成交的 {symbol} 卖出总量"
     },
     "backToList": "返回策略列表",
+    "owner": "所有者",
     "list": {
       "searchPlaceholder": "按名称、交易对、交易所搜索...",
       "allExchanges": "全部交易所",

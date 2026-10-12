@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getClientIp, getSession } from '@/lib/auth';
 import { getDataManager } from '@/lib/data-manager';
 import { notifyConfigChange } from '@/lib/console-notify';
+import { buildStrategyLiveDetail } from '@/lib/strategy-detail-payload';
 import {
   parseStrategyId,
   pgErrorCode,
@@ -24,7 +25,10 @@ function isAdminSession(session: Awaited<ReturnType<typeof getSession>>): boolea
 
 /**
  * GET /api/admin/strategies/[id] — admin-only. Single strategy with owner
- * (id/name/email) and its cached performance row.
+ * (id/name/email) and its cached performance row, plus the SAME live payload
+ * the owner-facing detail route returns (`rebuiltPerformance` +
+ * `positionSummary`) so the shared `/strategy/[id]` page renders identically
+ * for an admin viewing another user's strategy.
  */
 export async function GET(request: NextRequest, context: RouteContext) {
   const session = await getSession(request);
@@ -48,7 +52,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Strategy not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ strategy });
+    const { rebuiltPerformance, positionSummary } = await buildStrategyLiveDetail(
+      dm,
+      strategy,
+    );
+
+    return NextResponse.json({ strategy, rebuiltPerformance, positionSummary });
   } catch (error) {
     console.error('[Admin Strategies] Failed to fetch strategy:', error);
     return NextResponse.json({ error: 'Failed to fetch strategy' }, { status: 500 });

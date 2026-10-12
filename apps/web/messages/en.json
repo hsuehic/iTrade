@@ -1901,6 +1901,7 @@
       "totalSoldDesc": "Total filled {symbol} sell size"
     },
     "backToList": "Back to Strategies List",
+    "owner": "Owner",
     "list": {
       "searchPlaceholder": "Search by name, symbol, exchange...",
       "allExchanges": "All Exchanges",

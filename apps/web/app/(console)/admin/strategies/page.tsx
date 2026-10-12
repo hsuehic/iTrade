@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { SiteHeader } from '@/components/site-header';
 import { UserSelector } from '@/components/strategy/user-selector';
 import { SidebarInset } from '@/components/ui/sidebar';
@@ -734,7 +735,12 @@ export default function AdminStrategiesPage() {
                             <TableRow key={s.id}>
                               <TableCell className="py-3">
                                 <div className="flex flex-col">
-                                  <span className="font-medium">{s.name}</span>
+                                  <Link
+                                    href={`/strategy/${s.id}`}
+                                    className="font-medium hover:underline underline-offset-4"
+                                  >
+                                    {s.name}
+                                  </Link>
                                   <span className="text-xs text-muted-foreground">
                                     {s.type}
                                   </span>

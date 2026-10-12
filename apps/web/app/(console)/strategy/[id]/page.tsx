@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, use } from 'react';
+import { useEffect, useState, useCallback, useRef, use } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import {
@@ -38,6 +38,7 @@ import { ExchangeLogo } from '@/components/exchange-logo';
 import { SymbolIcon } from '@/components/symbol-icon';
 import { OrdersTable } from '@/components/orders-table';
 import { getDisplaySymbol, extractBaseCurrency } from '@/lib/exchanges';
+import { authClient } from '@/lib/auth-client';
 
 import { StrategyConfigView } from '@/components/strategy/strategy-config-view';
 
@@ -49,6 +50,36 @@ export default function StrategyDetailPage(props: { params: Params }) {
 
   const t = useTranslations('strategy');
   const router = useRouter();
+
+  // An admin lands here from Management → Strategy Management, where the
+  // Strategy Name column links to this page. Admins read any user's strategy
+  // through the admin API; a strategy the admin does NOT own renders read-only
+  // (no Edit/Clone, no order row actions — those endpoints are owner-scoped
+  // and would 403) and shows an Owner line. A strategy the admin DOES own, and
+  // every strategy viewed by its owner, keep the exact previous behaviour.
+  const { data: session, isPending: sessionPending } = authClient.useSession();
+
+  // Identity snapshot, latched from the first resolved session and only ever
+  // replaced by a DIFFERENT signed-in user. better-auth's session atom keeps
+  // the previous `data` while a refetch is in flight, but sets `data: null`
+  // (with `isPending` still false) when a session refetch FAILS — reacting to
+  // that transient null would flip `fetchBase` mid-view and, for an admin
+  // reading someone else's strategy, fire a 403 against the owner route.
+  const [viewer, setViewer] = useState<{ id: string; role: string | null } | null>(null);
+
+  useEffect(() => {
+    if (!session?.user) return;
+    const user = session.user as { id: string; role?: string | null };
+    setViewer((prev) =>
+      prev?.id === user.id ? prev : { id: user.id, role: user.role ?? null },
+    );
+  }, [session]);
+
+  const isAdmin = viewer?.role === 'admin';
+  // Fetch base is keyed on the ROLE alone: the admin endpoint returns an
+  // admin's own strategy just as well as someone else's, and ownership is not
+  // known until the strategy has been fetched.
+  const fetchBase = isAdmin ? '/api/admin/strategies' : '/api/strategies';
 
   interface PnLData {
     realizedPnL: string | number;
@@ -92,11 +123,30 @@ export default function StrategyDetailPage(props: { params: Params }) {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [cloning, setCloning] = useState(false);
 
+  // Read-only affordances are decided by OWNERSHIP, not by role: the admin
+  // endpoints work for an admin's own strategy too, so an admin who also owns
+  // strategies keeps Edit/Clone/order actions on their own rows. A regular
+  // user is always the owner (the owner-scoped route 403s otherwise), so their
+  // behaviour is unchanged.
+  const isOwner = Boolean(viewer && strategy?.user && strategy.user.id === viewer.id);
+  // True only when an admin is reading a strategy they do NOT own. Writes and
+  // the back target follow OWNER semantics whenever the strategy is the
+  // viewer's own, so an admin/owner gets no surprise admin audit entry and
+  // returns to the normal list.
+  const adminView = isAdmin && !isOwner;
+  const backHref = adminView ? '/admin/strategies' : '/strategy';
+  // Primitive (stable) form of the signed-in user, so the fetch effect can wait
+  // for identity without depending on the `session` object identity — better-auth
+  // hands back a fresh object on every re-resolve (e.g. window focus), which must
+  // not become a fetch trigger.
+  const sessionUserId = session?.user?.id ?? null;
+  const initialFetchDoneRef = useRef(false);
+
   const fetchStrategy = useCallback(
     async (isBackgroundRefresh = false) => {
       try {
         if (!isBackgroundRefresh) setLoading(true);
-        const res = await fetch(`/api/strategies/${id}`, { cache: 'no-store' });
+        const res = await fetch(`${fetchBase}/${id}`, { cache: 'no-store' });
         if (!res.ok) throw new Error('Failed to fetch strategy');
         const data = await res.json();
         setStrategy(data.strategy);
@@ -111,13 +161,27 @@ export default function StrategyDetailPage(props: { params: Params }) {
         if (!isBackgroundRefresh) setLoading(false);
       }
     },
-    [id, t],
+    [fetchBase, id, t],
   );
 
   useEffect(() => {
+    // Wait for the identity latch before fetching: `fetchBase` depends on it,
+    // and firing early would hit the owner-scoped route first and surface a
+    // spurious 403 toast. When the session resolves to NO user (initial fetch
+    // failed / signed out) we fall through to the owner base, exactly like
+    // before this change: it 401s and the error state renders. Unauthenticated
+    // visitors never get here anyway — middleware 307s /strategy/* to sign-in.
+    if (sessionPending) return;
+    if (!viewer && sessionUserId) return;
     if (isNaN(id)) return;
 
-    fetchStrategy();
+    // The first run loads behind the full skeleton; any LATER run of this effect
+    // (better-auth re-resolving the session on window focus can flip
+    // `sessionPending` true→false again) refreshes in the BACKGROUND so the
+    // page never flashes its loading state twice.
+    const isFirstRun = !initialFetchDoneRef.current;
+    initialFetchDoneRef.current = true;
+    fetchStrategy(!isFirstRun);
 
     // Unrealized PnL depends on the live market price, which the initial
     // fetch snapshots at load time. Without polling, the figures on this
@@ -131,10 +195,14 @@ export default function StrategyDetailPage(props: { params: Params }) {
     };
     const intervalId = setInterval(tick, 15000);
     return () => clearInterval(intervalId);
-  }, [id, fetchStrategy]);
+    // `viewer` is a dep because `fetchStrategy`/`fetchBase` are derived from it
+    // while the strategy is unchanged for a non-admin viewer; `sessionUserId` is
+    // the primitive identity gate above (`session` itself is deliberately not a
+    // dep — its object identity changes on every better-auth re-resolve).
+  }, [id, fetchStrategy, sessionPending, sessionUserId, viewer]);
 
   const toggleStatus = async () => {
-    if (!strategy) return;
+    if (!strategy || !isOwner) return;
 
     const newStatus =
       strategy.status === StrategyStatus.ACTIVE
@@ -143,6 +211,10 @@ export default function StrategyDetailPage(props: { params: Params }) {
 
     try {
       setUpdatingStatus(true);
+      // Owner-scoped route only: the page is strictly read-only for anyone who
+      // does not own the strategy, so this button is not rendered for them.
+      // (Admins keep start/stop on the Strategy Management list, which uses the
+      // audited /api/admin/strategies/[id]/status route.)
       const res = await fetch(`/api/strategies/${id}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -260,7 +332,7 @@ export default function StrategyDetailPage(props: { params: Params }) {
         <SiteHeader title={t('title')} />
         <div className="p-6 text-center">
           <h2 className="text-xl font-bold">{t('errors.notFound')}</h2>
-          <Button variant="link" onClick={() => router.push('/strategy')}>
+          <Button variant="link" onClick={() => router.push(backHref)}>
             <IconArrowLeft className="mr-2 h-4 w-4" />
             {t('backToList')}
           </Button>
@@ -280,7 +352,7 @@ export default function StrategyDetailPage(props: { params: Params }) {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => router.push('/strategy')}
+                onClick={() => router.push(backHref)}
                 className="h-8 w-8 -ml-2"
               >
                 <IconArrowLeft className="h-4 w-4" />
@@ -310,6 +382,17 @@ export default function StrategyDetailPage(props: { params: Params }) {
               <div className="h-4 w-[1px] bg-border" />
               <div className="font-mono text-xs opacity-80">{strategy.type}</div>
             </div>
+
+            {/* Admin-only: whose strategy is this? */}
+            {!isOwner && strategy.user && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground ml-8">
+                <span className="font-semibold text-foreground/80">{t('owner')}:</span>
+                <span>{strategy.user.name || strategy.user.email}</span>
+                {strategy.user.name && strategy.user.email && (
+                  <span className="opacity-70">({strategy.user.email})</span>
+                )}
+              </div>
+            )}
 
             {(() => {
               const startStr = strategy.performance?.startTime || strategy.createdAt;
@@ -364,58 +447,69 @@ export default function StrategyDetailPage(props: { params: Params }) {
           </div>
 
           <div className="flex items-center gap-2 ml-8 md:ml-0">
-            <Button
-              size="sm"
-              variant={strategy.status === 'active' ? 'destructive' : 'default'}
-              onClick={toggleStatus}
-              disabled={updatingStatus}
-            >
-              {strategy.status === 'active' ? (
-                <>
-                  <IconPlayerPause className="mr-2 h-4 w-4" />
-                  {t('actions.stop')}
-                </>
-              ) : (
-                <>
-                  <IconPlayerPlay className="mr-2 h-4 w-4" />
-                  {t('actions.start')}
-                </>
-              )}
-            </Button>
+            {/* Owner-scoped: this page is read-only for anyone who does not own
+                the strategy. Admins start/stop from the Strategy Management
+                list instead (audited admin status route). */}
+            {isOwner && (
+              <Button
+                size="sm"
+                variant={strategy.status === 'active' ? 'destructive' : 'default'}
+                onClick={toggleStatus}
+                disabled={updatingStatus}
+              >
+                {strategy.status === 'active' ? (
+                  <>
+                    <IconPlayerPause className="mr-2 h-4 w-4" />
+                    {t('actions.stop')}
+                  </>
+                ) : (
+                  <>
+                    <IconPlayerPlay className="mr-2 h-4 w-4" />
+                    {t('actions.start')}
+                  </>
+                )}
+              </Button>
+            )}
 
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => router.push(`/strategy?edit=${strategy.id}`)}
-              disabled={strategy.status === StrategyStatus.ACTIVE}
-              title={
-                strategy.status === StrategyStatus.ACTIVE
-                  ? t('actions.cannotEditActive')
-                  : undefined
-              }
-            >
-              <IconEdit className="mr-2 h-4 w-4" />
-              {t('actions.edit')}
-            </Button>
+            {/* Edit/Clone are owner-scoped (`/api/strategies/[id]/*`) and would
+                403 on someone else's strategy. */}
+            {isOwner && (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => router.push(`/strategy?edit=${strategy.id}`)}
+                  disabled={strategy.status === StrategyStatus.ACTIVE}
+                  title={
+                    strategy.status === StrategyStatus.ACTIVE
+                      ? t('actions.cannotEditActive')
+                      : undefined
+                  }
+                >
+                  <IconEdit className="mr-2 h-4 w-4" />
+                  {t('actions.edit')}
+                </Button>
 
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={cloneStrategy}
-              disabled={cloning}
-            >
-              {cloning ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
-                  {t('actions.cloning')}
-                </>
-              ) : (
-                <>
-                  <IconCopy className="mr-2 h-4 w-4" />
-                  {t('actions.clone')}
-                </>
-              )}
-            </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={cloneStrategy}
+                  disabled={cloning}
+                >
+                  {cloning ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
+                      {t('actions.cloning')}
+                    </>
+                  ) : (
+                    <>
+                      <IconCopy className="mr-2 h-4 w-4" />
+                      {t('actions.clone')}
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
           </div>
         </div>
 
@@ -663,7 +757,7 @@ export default function StrategyDetailPage(props: { params: Params }) {
           </TabsList>
 
           <TabsContent value="orders" className="space-y-4">
-            <OrdersTable selectedStrategy={id} />
+            <OrdersTable selectedStrategy={id} readOnly={!isOwner} />
           </TabsContent>
 
           <TabsContent value="performance" className="space-y-4">

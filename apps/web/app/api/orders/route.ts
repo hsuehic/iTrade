@@ -233,9 +233,25 @@ export async function GET(request: NextRequest) {
     if (sortBy) filters.sortBy = sortBy;
     if (sortOrder) filters.sortOrder = sortOrder as 'ASC' | 'DESC';
     if (search) filters.search = search;
-    filters.userId = session.user.id;
 
     const dataManager = await getDataManager();
+
+    // Ownership scoping. Orders are always scoped to a single user. An admin
+    // viewing ANOTHER user's strategy (Management → Strategy Management →
+    // detail) may read that strategy's orders, but only when an explicit
+    // `strategyId` identifies them: the strategy row is the authority for
+    // whose orders those are, so a caller-supplied `userId` is never trusted.
+    const role = (session.user as { role?: string | null }).role;
+    if (role === 'admin' && filters.strategyId !== undefined) {
+      const strategy = await dataManager.getStrategy(filters.strategyId);
+      if (!strategy) {
+        return NextResponse.json({ error: 'Strategy not found' }, { status: 404 });
+      }
+      filters.userId = strategy.userId;
+    } else {
+      filters.userId = session.user.id;
+    }
+
     const { orders, total } = await dataManager.getPaginatedOrders(filters);
 
     return NextResponse.json({

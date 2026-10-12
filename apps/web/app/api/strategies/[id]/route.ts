@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { TypeOrmDataManager, type StrategyStatus } from '@itrade/data-manager';
+import { type StrategyStatus } from '@itrade/data-manager';
 
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
 import { logIfImpersonating } from '@/lib/audit-log';
-import { getCurrentPrice } from '@/lib/live-balance';
+import { buildStrategyLiveDetail } from '@/lib/strategy-detail-payload';
 import { notifyConfigChange } from '@/lib/console-notify';
 import { StrategyParameters } from '@itrade/core';
 
@@ -36,15 +36,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const dataManager = await getDataManager();
-    const dataManagerWithRebuild = dataManager as TypeOrmDataManager & {
-      rebuildStrategyPerformance?: (
-        strategyId: number,
-        symbol: string,
-        exchange: string,
-        strategyName?: string,
-        currentPrice?: number,
-      ) => Promise<unknown>;
-    };
     // Include user for ownership check
     const strategy = await dataManager.getStrategy(id, {
       includeUser: true,
@@ -60,74 +51,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Always compute performance live by replaying orders — no cached/stale
-    // performance row is trusted, so display always reflects the actual order
-    // history (see also: strategyId fill-routing fix that made cached rows
-    // untrustworthy for any strategy that predates it).
-    let rebuiltPerformance = null;
-    if (strategy.symbol && strategy.exchange) {
-      try {
-        if (dataManagerWithRebuild.rebuildStrategyPerformance) {
-          // Fetch a real-time market price so open positions get a live
-          // unrealized PnL instead of always showing 0.
-          // Pass marketType so perpetual strategies use the futures price
-          // (fapi) instead of the spot price — they can differ materially.
-          const currentPrice = await getCurrentPrice(
-            strategy.symbol,
-            strategy.exchange,
-            strategy.marketType,
-          ).catch(() => null);
-
-          rebuiltPerformance = await dataManagerWithRebuild.rebuildStrategyPerformance(
-            strategy.id,
-            strategy.symbol,
-            strategy.exchange,
-            strategy.name,
-            currentPrice ?? undefined,
-          );
-        }
-      } catch (e) {
-        console.warn(`Failed to rebuild performance for strategy ${id}`, e);
-      }
-    }
-
-    // Calculate position summary: executed net position + pending buy/sell sizes + total bought/sold
-    let positionSummary: {
-      netExecutedPosition: string;
-      pendingBuySize: string;
-      pendingSellSize: string;
-      totalBoughtSize: string;
-      totalSoldSize: string;
-    } | null = null;
-    try {
-      const dataManagerWithPosition = dataManager as typeof dataManager & {
-        getStrategyPositionSummary?: (
-          strategyId: number,
-          symbol: string,
-        ) => Promise<{
-          netExecutedPosition: { toString(): string };
-          pendingBuySize: { toString(): string };
-          pendingSellSize: { toString(): string };
-          totalBoughtSize: { toString(): string };
-          totalSoldSize: { toString(): string };
-        }>;
-      };
-      if (dataManagerWithPosition.getStrategyPositionSummary && strategy.symbol) {
-        const summary = await dataManagerWithPosition.getStrategyPositionSummary(
-          strategy.id,
-          strategy.symbol,
-        );
-        positionSummary = {
-          netExecutedPosition: summary.netExecutedPosition.toString(),
-          pendingBuySize: summary.pendingBuySize.toString(),
-          pendingSellSize: summary.pendingSellSize.toString(),
-          totalBoughtSize: summary.totalBoughtSize.toString(),
-          totalSoldSize: summary.totalSoldSize.toString(),
-        };
-      }
-    } catch (e) {
-      console.warn(`Failed to calculate position summary for strategy ${id}`, e);
-    }
+    // Live performance + position summary. Shared with the admin detail route
+    // so both audiences get the identical payload shape.
+    const { rebuiltPerformance, positionSummary } = await buildStrategyLiveDetail(
+      dataManager,
+      strategy,
+    );
 
     return NextResponse.json({ strategy, rebuiltPerformance, positionSummary });
   } catch (error) {
