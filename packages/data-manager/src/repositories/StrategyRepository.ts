@@ -216,8 +216,9 @@ export class StrategyRepository {
 
     const query = this.repository
       .createQueryBuilder('strategy')
-      .leftJoin('strategy.user', 'user')
-      .addSelect(['user.id', 'user.name', 'user.email'])
+      // NOTE: the owner is NOT joined here. A partial relation select on a
+      // paginated query is unreliable in TypeORM 0.3 — see `attachOwners` for
+      // the reproduction. Owners are attached after the page is fetched.
       .leftJoinAndMapOne(
         'strategy.performance',
         StrategyPerformanceEntity,
@@ -271,7 +272,48 @@ export class StrategyRepository {
       .take(pageSize);
 
     const [strategies, total] = await query.getManyAndCount();
+    await this.attachOwners(strategies);
     return { strategies, total };
+  }
+
+  /**
+   * Fill in `strategy.user` for a page of strategies with ONE batched query.
+   *
+   * Why not a join: with `skip`/`take`, TypeORM 0.3 runs the page through a
+   * second pass (`SELECT DISTINCT id ... LIMIT/OFFSET`, then re-query with
+   * `WHERE id IN (...)`). On that pass a relation selected with a plain
+   * `leftJoin(...).addSelect([...])` is silently dropped for part of the rows
+   * — reproduced on prod: at `pageSize: 50`, 6 of 50 rows came back without
+   * `user` (the same rows kept it at `pageSize: 10`), which the admin Strategy
+   * Management list rendered as an "Unknown" owner. `leftJoinAndSelect` and
+   * reordering the joins do not help; plain `limit` does, but would make the
+   * page size depend on the joins staying 1:1. Attaching owners explicitly is
+   * order- and size-independent.
+   *
+   * Only `id`/`name`/`email` are selected — never `user.image`, which stores
+   * the avatar as a base64 data URL (see findById).
+   */
+  private async attachOwners(strategies: StrategyEntity[]): Promise<void> {
+    const ownerIds = [
+      ...new Set(
+        strategies
+          .map((strategy) => strategy.userId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    if (ownerIds.length === 0) return;
+
+    const owners: Array<{ id: string; name: string | null; email: string | null }> =
+      await this.repository.query(
+        `SELECT id, name, email FROM "user" WHERE id = ANY($1::text[])`,
+        [ownerIds],
+      );
+
+    const byId = new Map(owners.map((owner) => [owner.id, owner]));
+    for (const strategy of strategies) {
+      const owner = strategy.userId ? byId.get(strategy.userId) : undefined;
+      if (owner) strategy.user = owner as StrategyEntity['user'];
+    }
   }
 
   async update(id: number, updates: Partial<StrategyEntity>): Promise<void> {
