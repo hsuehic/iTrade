@@ -779,6 +779,10 @@
     "screen.admin_users.filter_group_exchange": "交易所",
     "screen.admin_users.sort_ascending": "升序",
     "screen.admin_users.sort_descending": "降序",
-    "common.clear": "清除"
+    "common.clear": "清除",
+    "screen.admin_strategies.action_view": "查看详情",
+    "screen.strategy_detail.read_only": "只读",
+    "screen.strategy_detail.owner": "所有者",
+    "screen.strategy_detail.load_failed": "加载策略详情失败"
   }
 }

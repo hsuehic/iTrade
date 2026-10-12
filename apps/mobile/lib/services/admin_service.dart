@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../models/admin_strategy.dart';
 import '../models/admin_user.dart';
 import '../models/admin_roi.dart';
+import '../models/strategy.dart';
 import '../models/trading_pair.dart';
 import 'api_client.dart';
 import 'auth_service.dart';
@@ -451,6 +452,60 @@ class AdminService {
     } catch (_) {
       return const AdminOperationResult(success: false);
     }
+  }
+
+  /// Single-strategy admin read via `GET /api/admin/strategies/{id}` — the
+  /// mobile counterpart of the web detail page's admin fetch base. The route
+  /// returns the same live payload shape as the owner-scoped
+  /// `GET /api/strategies/{id}` (`{strategy, rebuiltPerformance,
+  /// positionSummary}` — both are built by the shared
+  /// `buildStrategyLiveDetail` helper), but joins `strategy.user` so the
+  /// screen can decide owner-vs-read-only affordances, and works for ANY
+  /// user's strategy, not just the admin's own.
+  ///
+  /// Returns `null` on any transport/HTTP/parse failure so the screen can
+  /// render its error state (same contract as [fetchStrategies]).
+  Future<AdminStrategyDetail?> fetchStrategyDetail(int id) async {
+    try {
+      final res = await ApiClient.instance.getJson(
+        '/api/admin/strategies/$id',
+        options: _tolerant,
+      );
+      if (res.statusCode != 200 || res.data is! Map) return null;
+      final data = Map<String, dynamic>.from(res.data as Map);
+      final rawStrategy = data['strategy'];
+      if (rawStrategy is! Map) return null;
+      return AdminStrategyDetail(
+        strategy: Strategy.fromJson(Map<String, dynamic>.from(rawStrategy)),
+        owner: _ownerFromStrategyJson(rawStrategy),
+        positionSummary: _positionSummaryFromJson(data['positionSummary']),
+        rebuiltPerformance: _rebuiltPerformanceFromJson(
+          data['rebuiltPerformance'],
+        ),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// `strategy.user` projection (`{id, name, email}`) joined by the admin
+  /// detail route via `{includeUser: true}` — absent when the owner row could
+  /// not be joined, in which case the screen cannot resolve the owner and
+  /// treats the strategy as not-owned (read-only).
+  AdminStrategyOwner? _ownerFromStrategyJson(Map<dynamic, dynamic> json) {
+    final rawUser = json['user'];
+    if (rawUser is! Map) return null;
+    return AdminStrategyOwner.fromJson(Map<String, dynamic>.from(rawUser));
+  }
+
+  StrategyPositionSummary? _positionSummaryFromJson(Object? json) {
+    if (json is! Map) return null;
+    return StrategyPositionSummary.fromJson(Map<String, dynamic>.from(json));
+  }
+
+  RebuiltPerformance? _rebuiltPerformanceFromJson(Object? json) {
+    if (json is! Map) return null;
+    return RebuiltPerformance.fromJson(Map<String, dynamic>.from(json));
   }
 
   /// Applies a partial update to any user's strategy via

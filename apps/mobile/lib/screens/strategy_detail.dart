@@ -5,8 +5,10 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import '../models/strategy.dart';
 import '../models/order.dart';
+import '../models/admin_strategy.dart';
 import '../services/strategy_service.dart';
 import '../services/order_service.dart';
+import '../services/admin_service.dart';
 import '../services/copy_service.dart';
 import '../design/tokens/color.dart';
 import '../utils/exchange_config.dart';
@@ -54,7 +56,21 @@ class StrategyDetailScreen extends StatefulWidget {
   final Strategy strategy;
   final StrategyPnL? pnl;
 
-  const StrategyDetailScreen({super.key, required this.strategy, this.pnl});
+  /// Admin cross-owner view mode. When true the screen opened from the admin
+  /// Strategy Management list and the strategy belongs to ANOTHER user: the
+  /// screen reads via `GET /api/admin/strategies/{id}` and renders strictly
+  /// read-only (no Start/Stop, Edit, Clone, Delete; no order edit/cancel) —
+  /// the mobile counterpart of the web detail page's `isOwner` gating.
+  /// Admins act on other users' strategies from the list page, which already
+  /// uses the audited admin routes.
+  final bool crossOwnerAdmin;
+
+  const StrategyDetailScreen({
+    super.key,
+    required this.strategy,
+    this.pnl,
+    this.crossOwnerAdmin = false,
+  });
 
   @override
   State<StrategyDetailScreen> createState() => _StrategyDetailScreenState();
@@ -64,13 +80,36 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen>
     with SingleTickerProviderStateMixin {
   final StrategyService _strategyService = StrategyService.instance;
   final OrderService _orderService = OrderService.instance;
+  final AdminService _adminService = AdminService.instance;
 
   late Strategy _strategy;
   StrategyPositionSummary? _positionSummary;
   RebuiltPerformance? _rebuiltPerformance;
 
+  /// Owner projection of the viewed strategy — only populated in admin
+  /// cross-owner mode (joined server-side by the admin detail route). Used to
+  /// render the "Owner" line; a normal user is always the owner and never
+  /// sees it.
+  AdminStrategyOwner? _owner;
+
   bool _isUpdating = false;
   bool _isLoadingData = true;
+
+  /// Strictly read-only mode: admin viewing a strategy they do NOT own
+  /// (mirrors the web page's `isOwner && …` affordance gating).
+  bool get _readOnly => widget.crossOwnerAdmin;
+
+  /// Owner label for the admin "Owner" line: name, else email, else the raw
+  /// user id (same precedence as `AdminStrategy.ownerLabel`).
+  String get _ownerDisplayName {
+    final owner = _owner;
+    if (owner == null) return '';
+    final name = owner.name?.trim() ?? '';
+    if (name.isNotEmpty) return name;
+    final email = owner.email?.trim() ?? '';
+    if (email.isNotEmpty) return email;
+    return owner.id;
+  }
 
   // Orders
   List<Order> _orders = [];
@@ -109,14 +148,47 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen>
   Future<void> _loadData() async {
     setState(() => _isLoadingData = true);
     try {
-      final detail = await _strategyService.getStrategyDetail(_strategy.id);
-      if (mounted) {
-        setState(() {
-          if (detail.strategy != null) _strategy = detail.strategy!;
-          _positionSummary = detail.positionSummary;
-          _rebuiltPerformance = detail.rebuiltPerformance;
-          _isLoadingData = false;
-        });
+      if (widget.crossOwnerAdmin) {
+        // Admin cross-owner read: the owner-scoped `/api/strategies/{id}`
+        // would 403 for someone else's strategy. The admin route returns the
+        // same live payload shape plus the owner projection.
+        final detail = await _adminService.fetchStrategyDetail(_strategy.id);
+        if (mounted) {
+          setState(() {
+            if (detail != null) {
+              _strategy = detail.strategy;
+              _positionSummary = detail.positionSummary;
+              _rebuiltPerformance = detail.rebuiltPerformance;
+              _owner = detail.owner;
+            }
+            _isLoadingData = false;
+          });
+        }
+        // Unlike the owner branch (which falls back to the seed the user just
+        // tapped from their own list), the admin seed comes from the trimmed
+        // list row and lacks parameters/marketType — silently rendering it
+        // as if it were the real strategy would mislead, so surface the
+        // failure and let pull-to-refresh retry.
+        if (detail == null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: CopyText(
+                'screen.strategy_detail.load_failed',
+                fallback: 'Failed to load strategy details',
+              ),
+            ),
+          );
+        }
+      } else {
+        final detail = await _strategyService.getStrategyDetail(_strategy.id);
+        if (mounted) {
+          setState(() {
+            if (detail.strategy != null) _strategy = detail.strategy!;
+            _positionSummary = detail.positionSummary;
+            _rebuiltPerformance = detail.rebuiltPerformance;
+            _isLoadingData = false;
+          });
+        }
       }
     } catch (e) {
       debugPrint('Failed to refresh strategy: $e');
@@ -198,8 +270,10 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen>
   // ─────────────────────────────────────────────────────────────────────────
 
   bool _isOrderOpen(Order order) => order.isNew || order.isPartiallyFilled;
+  // Admin cross-owner view: never offer order mutations (web parity — the
+  // orders table is `readOnly={!isOwner}`; cancel/edit would 403 anyway).
   bool _canEditOrder(Order order) =>
-      _isOrderOpen(order) && order.type.toUpperCase() == 'LIMIT';
+      !_readOnly && _isOrderOpen(order) && order.type.toUpperCase() == 'LIMIT';
 
   Future<void> _toggleStatus() async {
     if (_isUpdating) return;
@@ -576,41 +650,61 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen>
         surfaceTintColor: Colors.transparent,
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         actions: [
-          // Clone / copy strategy button
-          IconButton(
-            icon: const Icon(Icons.copy_outlined),
-            tooltip: 'Clone',
-            onPressed: _isUpdating ? null : _cloneStrategy,
-          ),
-          // Edit button
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Edit',
-            onPressed: _isUpdating ? null : _editStrategy,
-          ),
-          // Start / Stop button
-          IconButton(
-            icon: _isUpdating
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Icon(
-                    _strategy.isActive
-                        ? Icons.stop_circle_outlined
-                        : Icons.play_circle_outline,
+          // Admin cross-owner view is strictly read-only (web parity: every
+          // affordance below is owner-scoped and would 403 on someone else's
+          // strategy). Admins act from the Strategy Management list instead.
+          if (_readOnly)
+            Padding(
+              padding: EdgeInsets.only(right: 8.w),
+              child: Center(
+                child: CopyText(
+                  'screen.strategy_detail.read_only',
+                  fallback: 'Read-only',
+                  style: TextStyle(
+                    fontSize: 11.sp,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.amber.shade700,
                   ),
-            color: _strategy.isActive ? Colors.red : Colors.green,
-            tooltip: _strategy.isActive ? 'Stop' : 'Start',
-            onPressed: _isUpdating ? null : _toggleStatus,
-          ),
-          if (!_strategy.isActive)
+                ),
+              ),
+            )
+          else ...[
+            // Clone / copy strategy button
             IconButton(
-              icon: const Icon(Icons.delete_outline),
-              tooltip: 'Delete',
-              onPressed: _isUpdating ? null : _deleteStrategy,
+              icon: const Icon(Icons.copy_outlined),
+              tooltip: 'Clone',
+              onPressed: _isUpdating ? null : _cloneStrategy,
             ),
+            // Edit button
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Edit',
+              onPressed: _isUpdating ? null : _editStrategy,
+            ),
+            // Start / Stop button
+            IconButton(
+              icon: _isUpdating
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      _strategy.isActive
+                          ? Icons.stop_circle_outlined
+                          : Icons.play_circle_outline,
+                    ),
+              color: _strategy.isActive ? Colors.red : Colors.green,
+              tooltip: _strategy.isActive ? 'Stop' : 'Start',
+              onPressed: _isUpdating ? null : _toggleStatus,
+            ),
+            if (!_strategy.isActive)
+              IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: 'Delete',
+                onPressed: _isUpdating ? null : _deleteStrategy,
+              ),
+          ],
         ],
         bottom: TabBar(
           controller: _tabController,
@@ -716,6 +810,44 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen>
                   ),
                 ],
               ),
+
+              // Admin cross-owner view: whose strategy is this? (A normal
+              // user is always the owner and never sees this line — mirrors
+              // the web page's `!isOwner && strategy.user` owner row.)
+              if (_readOnly && _owner != null) ...[
+                SizedBox(height: 8.w),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.person_outline,
+                      size: 12.w,
+                      color: Theme.of(context).hintColor,
+                    ),
+                    SizedBox(width: 4.w),
+                    CopyText(
+                      'screen.strategy_detail.owner',
+                      fallback: 'Owner',
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).hintColor,
+                      ),
+                    ),
+                    SizedBox(width: 6.w),
+                    Expanded(
+                      child: Text(
+                        _ownerDisplayName,
+                        style: TextStyle(
+                          fontSize: 11.sp,
+                          color: Theme.of(context).hintColor,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
 
               // Strategy type + runtime
               SizedBox(height: 8.w),
@@ -904,7 +1036,9 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen>
 
                       final order = filtered[idx - 1];
                       final isProcessing = _processingOrders.contains(order.id);
-                      final canCancel = _isOrderOpen(order);
+                      // Read-only admin view hides every order affordance —
+                      // `canCancel` here feeds only the Slidable/actions bar.
+                      final canCancel = _isOrderOpen(order) && !_readOnly;
                       final canEdit = _canEditOrder(order);
 
                       final orderItem = _OrderItem(
@@ -916,7 +1050,10 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen>
                         onEdit: () => _showEditOrderDialog(order),
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute(
-                            builder: (_) => OrderDetailScreen(order: order),
+                            builder: (_) => OrderDetailScreen(
+                              order: order,
+                              readOnly: _readOnly,
+                            ),
                           ),
                         ),
                       );

@@ -7,10 +7,14 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../design/tokens/color.dart';
 import '../models/admin_strategy.dart';
+import '../models/strategy.dart';
 import '../services/admin_service.dart';
+import '../services/auth_service.dart';
 import '../services/copy_service.dart';
 import '../utils/exchange_config.dart';
+import '../utils/crypto_icons.dart';
 import '../widgets/copy_text.dart';
+import 'strategy_detail.dart';
 
 /// Admin screen to search, sort, edit, start/stop, clone and delete ANY user's
 /// strategies — the mobile counterpart of the web console's
@@ -1096,6 +1100,11 @@ class _AdminStrategiesScreenState extends State<AdminStrategiesScreen> {
           children: [
             Row(
               children: [
+                // Token icon — same network-icon treatment as the user-side
+                // strategy list (CryptoIcons serves /crypto-icons/{base}@2x),
+                // letter fallback when the asset 404s.
+                _buildTokenIcon(strategy),
+                SizedBox(width: 10.w),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1110,8 +1119,19 @@ class _AdminStrategiesScreenState extends State<AdminStrategiesScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
-                        strategy.type,
-                        style: muted,
+                        strategy.symbol?.isNotEmpty == true
+                            ? strategy.symbol!
+                            : strategy.type,
+                        style: TextStyle(
+                          fontSize: 12.sp,
+                          color: Colors.grey[600],
+                          fontWeight: strategy.symbol?.isNotEmpty == true
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                          fontFamily: strategy.symbol?.isNotEmpty == true
+                              ? 'monospace'
+                              : null,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1169,37 +1189,9 @@ class _AdminStrategiesScreenState extends State<AdminStrategiesScreen> {
             SizedBox(height: 6.w),
             Row(
               children: [
-                Icon(
-                  Icons.currency_bitcoin,
-                  size: 13.w,
-                  color: Colors.grey[600],
-                ),
-                SizedBox(width: 4.w),
-                Text(
-                  strategy.symbol?.isNotEmpty == true
-                      ? strategy.symbol!
-                      : 'N/A',
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                SizedBox(width: 14.w),
-                Icon(
-                  SupportedExchanges.getIcon(strategy.exchange),
-                  size: 13.w,
-                  color: Colors.grey[600],
-                ),
-                SizedBox(width: 4.w),
-                Text(
-                  strategy.exchange?.isNotEmpty == true
-                      ? SupportedExchanges.getName(strategy.exchange)
-                      : 'N/A',
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
+                // Exchange chip: real logo (network, letter fallback) +
+                // exchange name, colored with the exchange brand color.
+                _buildExchangeChip(strategy),
                 const Spacer(),
                 Text(_formatDate(strategy.createdAt), style: muted),
               ],
@@ -1244,6 +1236,144 @@ class _AdminStrategiesScreenState extends State<AdminStrategiesScreen> {
     );
   }
 
+  /// Circular token icon from the symbol's base currency, mirroring the
+  /// user-side strategy list card (`CryptoIcons.getIconUrl`). Falls back to
+  /// the first letter on load failure, and to a generic exchange glyph when
+  /// there is no symbol at all.
+  Widget _buildTokenIcon(AdminStrategy strategy) {
+    final symbol = strategy.symbol?.trim() ?? '';
+    final baseCurrency = symbol.isEmpty ? '' : _extractBase(symbol);
+    final size = 34.w;
+    if (baseCurrency.isEmpty) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: Colors.grey[300],
+          shape: BoxShape.circle,
+        ),
+        child: Icon(Icons.currency_exchange, size: 16.w, color: Colors.grey),
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(size),
+      child: Image.network(
+        CryptoIcons.getIconUrl(baseCurrency),
+        width: size,
+        height: size,
+        errorBuilder: (context, error, stackTrace) => Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: Colors.grey[300],
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              baseCurrency.substring(0, 1).toUpperCase(),
+              style: TextStyle(
+                fontSize: 14.sp,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[700],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// `BTCUSDT` / `BTC-USDT-SWAP` / `BTC/USDT:USDT` → `BTC`. Local mirror of
+  /// [CryptoIcons]'s own extractor, kept here so the icon and any future
+  /// symbol display always agree.
+  String _extractBase(String symbol) {
+    var s = symbol;
+    if (s.contains(':')) s = s.split(':').first;
+    if (s.contains('/')) return s.split('/').first;
+    if (s.contains('-')) return s.split('-').first;
+    const quotes = ['USDT', 'USDC', 'USD', 'BTC', 'ETH', 'BNB', 'BUSD'];
+    for (final quote in quotes) {
+      if (s.length > quote.length && s.toUpperCase().endsWith(quote)) {
+        return s.substring(0, s.length - quote.length);
+      }
+    }
+    return s;
+  }
+
+  /// Exchange pill: real square logo (white box, network image with letter
+  /// fallback — same treatment as the user-side list's `_ExchangeLogo`) plus
+  /// the exchange name in its brand color.
+  Widget _buildExchangeChip(AdminStrategy strategy) {
+    final exchangeId = strategy.exchange?.trim() ?? '';
+    if (exchangeId.isEmpty) {
+      return Text(
+        'N/A',
+        style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
+      );
+    }
+    final config = SupportedExchanges.getById(exchangeId);
+    final logoUrl = config?.getLogoUrl();
+    // getName can only be empty if the raw id is empty, which the guard above
+    // already excludes — but never substring blind: the letter fallback must
+    // not throw RangeError if that contract ever changes.
+    final name = SupportedExchanges.getName(exchangeId);
+    final color = SupportedExchanges.getColor(exchangeId);
+    final letter = name.isNotEmpty
+        ? name.substring(0, 1)
+        : exchangeId.substring(0, 1);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 18.w,
+          height: 18.w,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: Colors.grey[300]!, width: 0.5),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(3.5),
+            child: logoUrl != null
+                ? Image.network(
+                    logoUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Center(
+                      child: Text(
+                        letter,
+                        style: TextStyle(
+                          fontSize: 10.sp,
+                          fontWeight: FontWeight.bold,
+                          color: color,
+                        ),
+                      ),
+                    ),
+                  )
+                : Center(
+                    child: Text(
+                      letter,
+                      style: TextStyle(
+                        fontSize: 10.sp,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                      ),
+                    ),
+                  ),
+          ),
+        ),
+        SizedBox(width: 5.w),
+        Text(
+          name,
+          style: TextStyle(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+
   Color _pnlColor(double? value, bool isDark) {
     if (value == null) return Colors.grey[600]!;
     return value >= 0 ? ColorTokens.profitGreen : ColorTokens.lossRed;
@@ -1261,16 +1391,66 @@ class _AdminStrategiesScreenState extends State<AdminStrategiesScreen> {
       decoration: BoxDecoration(
         color: color.withOpacity(0.14),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.35), width: 1),
       ),
-      child: Text(
-        CopyService.instance.t(
-          'screen.admin_strategies.status_$status',
-          fallback: _statusLabel(status),
-        ),
-        style: TextStyle(
-          fontSize: 11.sp,
-          color: color,
-          fontWeight: FontWeight.w700,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Leading status dot: makes the state readable at a glance even
+          // before the localized label is read (zh/en switch changes the
+          // label, the dot never changes meaning).
+          Container(
+            width: 6.w,
+            height: 6.w,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          SizedBox(width: 5.w),
+          Text(
+            CopyService.instance.t(
+              'screen.admin_strategies.status_$status',
+              fallback: _statusLabel(status),
+            ),
+            style: TextStyle(
+              fontSize: 11.sp,
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Opens the strategy detail page for any user's strategy — the mobile
+  /// counterpart of the web list's strategy-name link to `/strategy/{id}`.
+  /// The detail screen decides owner-vs-read-only affordances itself:
+  /// when the signed-in admin IS the owner it behaves exactly like the
+  /// user-side detail page (full control via the owner-scoped routes);
+  /// otherwise it is a strictly read-only admin view.
+  ///
+  /// The list row is converted to a seed [Strategy] for the initial paint;
+  /// the detail screen immediately re-fetches, so the seed only needs the
+  /// always-present fields.
+  void _openDetail(AdminStrategy strategy) {
+    final viewerId = AuthService.instance.user?.id;
+    final isOwner =
+        viewerId != null && viewerId.isNotEmpty && viewerId == strategy.userId;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => StrategyDetailScreen(
+          strategy: Strategy(
+            id: strategy.id,
+            name: strategy.name,
+            type: strategy.type,
+            status: strategy.status,
+            exchange: strategy.exchange,
+            symbol: strategy.symbol,
+            createdAt:
+                strategy.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0),
+            updatedAt:
+                strategy.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0),
+          ),
+          crossOwnerAdmin: !isOwner,
         ),
       ),
     );
@@ -1307,6 +1487,17 @@ class _AdminStrategiesScreenState extends State<AdminStrategiesScreen> {
               ),
             ),
             const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.visibility_outlined),
+              title: CopyText(
+                'screen.admin_strategies.action_view',
+                fallback: 'View details',
+              ),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _openDetail(strategy);
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.edit_outlined),
               title: CopyText(

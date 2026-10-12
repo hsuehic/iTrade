@@ -1,3 +1,5 @@
+import 'strategy.dart';
+
 /// Admin-scope view of a strategy owned by ANY user, as returned by
 /// `GET /api/admin/strategies` (the web console's Admin - Strategy Management
 /// page). Mirrors the `AdminStrategy` interface in
@@ -187,6 +189,26 @@ class AdminStrategyPage {
   final int total;
 
   const AdminStrategyPage({required this.strategies, required this.total});
+}
+
+/// Live single-strategy payload from `GET /api/admin/strategies/{id}` — the
+/// same shape as the owner-scoped detail route (`{strategy,
+/// rebuiltPerformance, positionSummary}`), plus the owner projection joined
+/// by the admin route so the screen can decide owner-vs-read-only
+/// affordances (the web detail page keys these on `strategy.user.id ===
+/// viewer.id`, never on role alone).
+class AdminStrategyDetail {
+  final Strategy strategy;
+  final AdminStrategyOwner? owner;
+  final StrategyPositionSummary? positionSummary;
+  final RebuiltPerformance? rebuiltPerformance;
+
+  const AdminStrategyDetail({
+    required this.strategy,
+    this.owner,
+    this.positionSummary,
+    this.rebuiltPerformance,
+  });
 }
 
 DateTime? _parseDate(Object? value) {

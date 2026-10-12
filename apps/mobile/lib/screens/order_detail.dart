@@ -14,7 +14,16 @@ import '../widgets/copy_text.dart';
 class OrderDetailScreen extends StatefulWidget {
   final Order order;
 
-  const OrderDetailScreen({super.key, required this.order});
+  /// Read-only mode (admin viewing another user's strategy from the strategy
+  /// detail screen): the Edit/Cancel order actions are hidden instead of left
+  /// to fail with a 403 at tap time.
+  final bool readOnly;
+
+  const OrderDetailScreen({
+    super.key,
+    required this.order,
+    this.readOnly = false,
+  });
 
   @override
   State<OrderDetailScreen> createState() => _OrderDetailScreenState();
@@ -437,8 +446,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       ),
     );
 
-    final canCancel = _isOrderOpen(order);
-    final canEdit = _canEditOrder(order);
+    final canCancel = !widget.readOnly && _isOrderOpen(order);
+    final canEdit = !widget.readOnly && _canEditOrder(order);
     final hasActions = canCancel || canEdit;
 
     return Scaffold(
