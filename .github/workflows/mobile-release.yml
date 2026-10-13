@@ -522,13 +522,79 @@ jobs:
           fi
           echo "Uploading: $IPA_PATH"
 
+          # ── Status correctness ─────────────────────────────────
+          # altool --output-format json has a known quirk: a REJECTED upload
+          # (e.g. "Invalid Pre-Release Train" — version closed for new build
+          # submissions, or CFBundleShortVersionString not higher than the
+          # previously approved version) still EXITS 0. The errors appear only
+          # in the JSON payload under "product-errors". Capture the output and
+          # fail this step when the payload reports product errors, so the
+          # workflow status reflects the real upload outcome.
+          set +e
           xcrun altool \
             --upload-app \
             --type ios \
             --file "$IPA_PATH" \
             --apiKey  "$ASC_KEY_ID" \
             --apiIssuer "$ASC_ISSUER_ID" \
-            --output-format json
+            --output-format json > "$RUNNER_TEMP/altool_output.log" 2>"$RUNNER_TEMP/altool_stderr.log"
+          ALTOOL_EXIT=$?
+          set -e
+
+          echo "── altool stdout ──"
+          cat "$RUNNER_TEMP/altool_output.log"
+          echo "── altool stderr ──"
+          cat "$RUNNER_TEMP/altool_stderr.log"
+
+          if [ "$ALTOOL_EXIT" -ne 0 ]; then
+            echo "❌ altool exited with code $ALTOOL_EXIT — upload failed"
+            exit "$ALTOOL_EXIT"
+          fi
+
+          # Positive assertion of success + fail-closed on known failure
+          # banners. Three outcomes, never silently green:
+          #   1. explicit success marker and no failure payload → green
+          #   2. failure payload → count product-errors (raw_decode tolerates
+          #      trailing log lines; empty array = no real error → green)
+          #   3. anything else (incl. "UPLOAD FAILED" banner without a JSON
+          #      payload, or output with neither signal) → red, fail-closed
+          OUT_LOG="$RUNNER_TEMP/altool_output.log"
+          ERR_LOG="$RUNNER_TEMP/altool_stderr.log"
+          # `|| true` on each pipeline: grep -c exits 1 on zero matches; under
+          # `-eo pipefail` (shell: bash) that would abort the step, so guard
+          # every probe regardless of the runner's shell mode.
+          HAS_SUCCESS=$(grep -c 'No errors uploading' "$OUT_LOG" "$ERR_LOG" 2>/dev/null | awk -F: '{s+=$NF} END {print s}' || true)
+          HAS_BANNER=$(grep -cE 'UPLOAD FAILED' "$OUT_LOG" "$ERR_LOG" 2>/dev/null | awk -F: '{s+=$NF} END {print s}' || true)
+          HAS_PERR=$(grep -c 'product-errors' "$OUT_LOG" "$ERR_LOG" 2>/dev/null | awk -F: '{s+=$NF} END {print s}' || true)
+          HAS_JSON=$(grep -c '{' "$OUT_LOG" "$ERR_LOG" 2>/dev/null | awk -F: '{s+=$NF} END {print s}' || true)
+          HAS_SUCCESS="${HAS_SUCCESS:-0}"
+          HAS_BANNER="${HAS_BANNER:-0}"
+          HAS_PERR="${HAS_PERR:-0}"
+          HAS_JSON="${HAS_JSON:-0}"
+
+          if [ "$HAS_SUCCESS" -gt 0 ] && [ "$HAS_BANNER" -eq 0 ] && [ "$HAS_PERR" -eq 0 ]; then
+            echo "✅ Upload to App Store Connect succeeded"
+          elif [ "$HAS_PERR" -gt 0 ] && [ "$HAS_JSON" -gt 0 ]; then
+            # Count product-errors entries in the JSON payload. Empty array
+            # means no real error (treat as success); non-empty → red.
+            # Parse BOTH streams — the JSON is emitted on stdout by altool, but
+            # if it ever lands on stderr only, parsing stdout alone would
+            # yield 0 errors and misreport a rejection as success (fail-open).
+            ERROR_COUNT=$(python3 -c "import json,sys; raw=open(sys.argv[1]).read()+chr(10)+open(sys.argv[2]).read(); i=raw.find('{'); d=(json.JSONDecoder().raw_decode(raw[i:])[0] if i>=0 else {}); errs=(d.get('product-errors') or []); [sys.stderr.write('ERROR: '+str((e.get('user-info') or {}).get('NSLocalizedFailureReason') or e.get('message',''))+chr(10)) for e in errs]; print(len(errs))" "$OUT_LOG" "$ERR_LOG" 2>&1 | tee /dev/stderr | tail -1 || true)
+            ERROR_COUNT="${ERROR_COUNT:-1}"
+            case "$ERROR_COUNT" in
+              ''|*[!0-9]*) ERROR_COUNT=1 ;;
+            esac
+            if [ "$ERROR_COUNT" -eq 0 ]; then
+              echo "ℹ️  product-errors present but empty — treating as success"
+            else
+              echo "❌ App Store Connect rejected the upload ($ERROR_COUNT error(s)) — see altool output above"
+              exit 1
+            fi
+          else
+            echo "❌ Unexpected altool output: neither a success marker nor a parseable failure payload (banner=$HAS_BANNER perr=$HAS_PERR json=$HAS_JSON) — failing (fail-closed)"
+            exit 1
+          fi
 
       # ── Cleanup ──────────────────────────────────────────────
       - name: Clean up secrets from runner
@@ -537,5 +603,7 @@ jobs:
           security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
           rm -f "$RUNNER_TEMP/certificate.p12"
           rm -f "$RUNNER_TEMP/profile.mobileprovision"
+          rm -f "$RUNNER_TEMP/altool_output.log"
+          rm -f "$RUNNER_TEMP/altool_stderr.log"
           rm -rf "$HOME/.appstoreconnect/private_keys"
           echo "✅ Temporary secrets removed"
