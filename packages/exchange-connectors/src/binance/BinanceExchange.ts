@@ -785,6 +785,99 @@ export class BinanceExchange extends BaseExchange {
     return mode;
   }
 
+  /**
+   * 🆕 Edit an open order in place via PUT /fapi/v1/order (USDⓈ-M futures).
+   *
+   * Venue facts (doc-verified):
+   * - ONLY futures support modify; Binance SPOT has NO amend endpoint —
+   *   canEditOrder() returns false for spot and editOrder throws.
+   * - ONLY LIMIT orders can be modified (-4055 for others).
+   * - quantity AND price MUST be sent together (-1106); `side` is required
+   *   (-1117). orderId/clientOrderId are NOT changed by the venue.
+   * - `quantity` is the NEW TOTAL (including executedQty). When the new total
+   *   ≤ executedQty the venue AUTO-CANCELS the original order instead of
+   *   rejecting — we detect status=CANCELED in the response and throw an
+   *   error flagged `editOrderFatal` so the caller surfaces the fact that the
+   *   original order no longer exists (cancel+replace callers would expect
+   *   a live replacement).
+   */
+  public async editOrder(params: {
+    symbol: string;
+    orderId?: string;
+    clientOrderId?: string;
+    quantity: Decimal;
+    price?: Decimal;
+    side?: OrderSide;
+  }): Promise<Order> {
+    const isFutures = this._isFuturesSymbol(params.symbol);
+    if (!isFutures) {
+      throw new Error(
+        `Binance editOrder: ${params.symbol} is not a futures symbol — spot has no native modify-order API`,
+      );
+    }
+
+    if (!params.orderId && !params.clientOrderId) {
+      throw new Error('Binance editOrder requires orderId or clientOrderId');
+    }
+    if (!params.price) {
+      throw new Error(
+        'Binance editOrder requires price (venue rule -1106: quantity and price must be sent together)',
+      );
+    }
+    if (!params.side) {
+      throw new Error('Binance editOrder requires side (venue rule -1117)');
+    }
+
+    const normalizedSymbol = this.normalizeSymbol(params.symbol);
+    const body: Record<string, any> = {
+      symbol: normalizedSymbol,
+      quantity: params.quantity.toString(),
+      price: params.price!.toString(),
+      side: params.side.toUpperCase(),
+      timestamp: Date.now(),
+    };
+
+    if (params.clientOrderId) {
+      body.origClientOrderId = params.clientOrderId;
+    } else {
+      body.orderId = params.orderId;
+    }
+
+    const signedParams = this.signRequest(body);
+    const response = await this.futuresClient.put('/fapi/v1/order', {
+      params: signedParams,
+    });
+
+    const order = this.transformBinanceOrder(response.data, 'futures');
+
+    // New total ≤ executedQty → venue auto-CANCELED the original order.
+    // That is a FATAL edit outcome, not a silent success. Attach the final
+    // executed amount so the caller can persist it with the CANCELED state
+    // (the order is by definition partially filled in this scenario).
+    if (order.status === OrderStatus.CANCELED) {
+      const err = new Error(
+        `Binance editOrder: new quantity ${params.quantity} ≤ executed amount — the venue auto-canceled the original order`,
+      );
+      (err as any).editOrderFatal = true;
+      (err as any).executedQuantity = order.executedQuantity;
+      throw err;
+    }
+
+    return order;
+  }
+
+  /**
+   * 🆕 Capability probe: only USDⓈ-M futures symbols have a native modify API
+   * (PUT /fapi/v1/order), and only LIMIT orders can be modified (-4055).
+   * A missing type is treated as NON-editable (fail-safe toward the
+   * cancel+replace fallback) — a MARKET order that lost its type must not be
+   * routed into a venue amend that would reject it.
+   */
+  public canEditOrder(symbol: string, type?: OrderType): boolean {
+    if (!this._isFuturesSymbol(symbol)) return false;
+    return type === OrderType.LIMIT;
+  }
+
   public async cancelOrder(
     symbol: string,
     orderId: string,

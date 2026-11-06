@@ -385,6 +385,164 @@ export class OKXExchange extends BaseExchange {
     }
   }
 
+  /**
+   * 🆕 Edit an open order in place via POST /api/v5/trade/amend-order.
+   *
+   * OKX keeps BOTH the venue ordId and the original clOrdId across an amend
+   * (verified against the v5 docs), so this path preserves the caller's
+   * identifiers — unlike cancel+replace, which changes both.
+   *
+   * Semantics (venue-doc-verified):
+   * - `newSz` is the TOTAL size including already-executed amount; the caller
+   *   passes the new total in base-currency terms and we convert to venue
+   *   units here (contracts via ctVal for SWAP) — same conversion as create.
+   * - cxlOnFail is deliberately OMITTED (default false): a rejected amend
+   *   leaves the original order live and untouched.
+   * - The HTTP envelope `code` AND the per-order `data[0].sCode` must both be
+   *   '0'; a non-zero sCode is a failure even when the envelope says code=0.
+   * - `price` is required for LIMIT orders; the amend response is a partial
+   *   record, so the post-edit state is read back via getOrder.
+   */
+  public async editOrder(params: {
+    symbol: string;
+    orderId?: string;
+    clientOrderId?: string;
+    quantity: Decimal;
+    price?: Decimal;
+    side?: OrderSide;
+  }): Promise<Order> {
+    const instId = this.normalizeSymbol(params.symbol);
+
+    if (!params.orderId && !params.clientOrderId) {
+      throw new Error('OKX editOrder requires orderId or clientOrderId');
+    }
+
+    // Total quantity in venue units — same conversion as createOrder.
+    const symbolInfo = await this.getCachedSymbolInfo(params.symbol);
+    const newSz = await this.calculateContractSize(params.quantity, symbolInfo);
+
+    const editData: Record<string, string> = {
+      instId,
+      newSz: newSz.toString(),
+    };
+    if (params.price) {
+      editData.newPx = params.price.toString();
+    }
+    // `side` is intentionally NOT forwarded: OKX amend-order has no side
+    // field (the live order's side never changes). Accepting it in the
+    // signature keeps the IExchange.editOrder contract uniform.
+    if (this.isVenueOrderId(params.orderId)) {
+      editData.ordId = params.orderId as string;
+    } else if (params.clientOrderId) {
+      editData.clOrdId = params.clientOrderId;
+    } else {
+      // Neither identifier is usable: sending the request with neither
+      // ordId nor clOrdId yields an opaque venue error. Fail loudly here.
+      throw new Error(
+        'OKX editOrder: no usable ordId (numeric venue id) or clOrdId to address the order',
+      );
+    }
+
+    // Clean up undefined values (OKX API doesn't accept undefined)
+    Object.keys(editData).forEach((key) => {
+      if (editData[key] === undefined || editData[key] === null) {
+        delete editData[key];
+      }
+    });
+
+    const signedData = this.signOKXRequest('POST', '/api/v5/trade/amend-order', editData);
+    const response = await this.httpClient.post('/api/v5/trade/amend-order', editData, {
+      headers: signedData.headers,
+    });
+
+    if (response.data.code !== '0') {
+      const details = Array.isArray(response.data.data)
+        ? JSON.stringify(response.data.data[0] || {})
+        : '';
+      throw new Error(
+        `OKX amend-order error [${response.data.code}]: ${response.data.msg} ${details}`,
+      );
+    }
+    // Per-order result: sCode=0 means success; a non-zero sCode (e.g. 51016
+    // order not exists) is an edit FAILURE even when the envelope code=0.
+    const perOrder = response.data.data[0];
+    if (!perOrder || perOrder.sCode !== '0') {
+      throw new Error(`OKX amend-order failed [${perOrder?.sCode}]: ${perOrder?.sMsg}`);
+    }
+
+    // Read the order back in its post-edit state. OKX keeps ordId AND the
+    // original clOrdId, so both identifiers still address the order.
+    const venueOrdId = (perOrder.ordId ?? params.orderId ?? '').toString();
+    if (!venueOrdId) {
+      throw new Error('OKX amend-order succeeded but returned no ordId');
+    }
+    // The amend is applied asynchronously: an immediate read-back can still
+    // return the PRE-amend snapshot. The requested newSz/newPx are the
+    // authoritative post-edit state once sCode=0 came back, so merge them over
+    // whatever the (possibly stale) read-back reports.
+    //
+    // The amend is ALREADY ACCEPTED at this point — a read-back failure must
+    // NOT turn the edit into a reported failure (the caller would retry or
+    // cancel a live amended order). Fall back to a synthesized post-edit
+    // record built from the request.
+    try {
+      const readBack = await this.getOrder(params.symbol, venueOrdId);
+      const requestedPx = params.price;
+      if (
+        readBack.status === OrderStatus.FILLED ||
+        readBack.status === OrderStatus.CANCELED ||
+        readBack.status === OrderStatus.REJECTED ||
+        readBack.status === OrderStatus.EXPIRED
+      ) {
+        // Filled/cancelled between amend and read-back — the read-back is
+        // terminal and MORE current than the request; return it unmerged.
+        return readBack;
+      }
+      return {
+        ...readBack,
+        quantity: params.quantity,
+        price: requestedPx ?? readBack.price,
+      };
+    } catch {
+      // Read-back failed AFTER the venue accepted the edit: synthesize the
+      // post-edit record from the request. Status NEW = "open, resting with
+      // the new values, fill state unknown"; executedQuantity stays UNSET so
+      // the web layer won't overwrite the DB's last-known fill amount; the
+      // periodic order-sync reconciles the real venue state. side falls back
+      // to BUY only when the caller omitted it (the web layer always passes
+      // it; strategies do not use this path).
+      return {
+        id: venueOrdId,
+        clientOrderId: params.clientOrderId,
+        symbol: params.symbol,
+        side: params.side ?? OrderSide.BUY,
+        type: OrderType.LIMIT,
+        quantity: params.quantity,
+        price: params.price,
+        status: OrderStatus.NEW,
+        timeInForce: TimeInForce.GTC,
+        timestamp: new Date(),
+      };
+    }
+  }
+
+  /**
+   * 🆕 Capability probe: OKX amend-order applies to plain orders only.
+   * Conditional orders (STOP_LOSS/TAKE_PROFIT families) are placed via the
+   * separate order-algo API and cannot be amended through amend-order, so
+   * they must take the cancel+replace fallback. MARKET orders never rest.
+   * A missing type is treated as NON-editable (fail-safe toward fallback).
+   */
+  public canEditOrder(_symbol: string, type?: OrderType): boolean {
+    return type === OrderType.LIMIT;
+  }
+
+  private isVenueOrderId(orderId?: string): boolean {
+    // OKX ordIds are numeric strings; anything else (e.g. a generated uuid
+    // placeholder) must never be sent as ordId.
+    return Boolean(orderId && /^\d+$/.test(orderId));
+  }
+
   public async cancelOrder(
     symbol: string,
     orderId: string,

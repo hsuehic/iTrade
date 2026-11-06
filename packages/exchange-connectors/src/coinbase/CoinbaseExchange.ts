@@ -396,6 +396,108 @@ export class CoinbaseExchange extends BaseExchange {
     return order;
   }
 
+  /**
+   * 🆕 Edit an open order in place via POST /api/v3/brokerage/orders/edit.
+   *
+   * Venue facts (doc-verified 2026-11-06):
+   * - order_id, price, size are ALL REQUIRED (price and size must be sent
+   *   together — this endpoint cannot change size alone).
+   * - Editing preserves the venue order_id AND client_order_id.
+   * - Response is ONLY { success: bool, errors: [...] } — no order payload,
+   *   so the post-edit state MUST be read back via getOrder().
+   * - Only orders the venue still considers open can be edited; editing a
+   *   terminal order returns success=false with an error in `errors`.
+   */
+  public async editOrder(params: {
+    symbol: string;
+    orderId?: string;
+    clientOrderId?: string;
+    quantity: Decimal;
+    price?: Decimal;
+    side?: OrderSide;
+  }): Promise<Order> {
+    if (!params.orderId) {
+      throw new Error('Coinbase editOrder requires orderId');
+    }
+    if (!params.price) {
+      throw new Error(
+        'Coinbase editOrder requires price (venue rule: order_id + price + size must all be present)',
+      );
+    }
+
+    const body = {
+      order_id: params.orderId,
+      price: params.price!.toString(),
+      size: params.quantity.toString(),
+    };
+
+    const resp = await this.httpClient.post('/api/v3/brokerage/orders/edit', body);
+
+    if (!resp.data?.success) {
+      const errors = resp.data?.errors
+        ? JSON.stringify(resp.data.errors)
+        : 'unknown error';
+      throw new Error(`Coinbase editOrder failed: ${errors}`);
+    }
+
+    // The edit response carries no order payload — read the post-edit state.
+    // The edit is applied asynchronously, so an immediate read-back can still
+    // return the PRE-edit snapshot; the requested size/price are the
+    // authoritative post-edit state once success=true came back, so merge
+    // them over whatever the (possibly stale) read-back reports.
+    //
+    // The edit is ALREADY ACCEPTED here — a read-back failure must NOT turn
+    // the edit into a reported failure (the caller would retry or cancel a
+    // live edited order). Fall back to a synthesized post-edit record.
+    try {
+      const readBack = await this.getOrder(params.symbol, params.orderId);
+      if (
+        readBack.status === OrderStatus.FILLED ||
+        readBack.status === OrderStatus.CANCELED ||
+        readBack.status === OrderStatus.REJECTED ||
+        readBack.status === OrderStatus.EXPIRED
+      ) {
+        // Terminal between edit and read-back — the read-back is MORE
+        // current than the request; return it unmerged.
+        return readBack;
+      }
+      return {
+        ...readBack,
+        quantity: params.quantity,
+        price: params.price!,
+      };
+    } catch {
+      // Synthesize from the request (read-back failed AFTER the venue
+      // accepted the edit). Status NEW = "open, resting with the new values,
+      // fill state unknown"; executedQuantity stays UNSET so the web layer
+      // won't overwrite the DB's last-known fill amount; the periodic
+      // order-sync reconciles the real venue state. side falls back to BUY
+      // only when the caller omitted it (the web layer always passes it).
+      return {
+        id: params.orderId,
+        clientOrderId: params.clientOrderId,
+        symbol: params.symbol,
+        side: params.side ?? OrderSide.BUY,
+        type: OrderType.LIMIT,
+        quantity: params.quantity,
+        price: params.price,
+        status: OrderStatus.NEW,
+        timeInForce: TimeInForce.GTC,
+        timestamp: new Date(),
+      };
+    }
+  }
+
+  /**
+   * 🆕 Capability probe: Advanced Trade's orders/edit works on open
+   * LIMIT-likes only; MARKET IOC orders never rest, and stop/bracket
+   * configurations are not addressable by this endpoint. A missing type is
+   * treated as NON-editable (fail-safe toward the cancel+replace fallback).
+   */
+  public canEditOrder(_symbol: string, type?: OrderType): boolean {
+    return type === OrderType.LIMIT;
+  }
+
   public async cancelOrder(symbol: string, orderId: string): Promise<Order> {
     this.normalizeSymbol(symbol); // ensure formatting, though not used directly
     const body = { order_ids: [orderId] };

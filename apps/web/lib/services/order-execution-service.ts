@@ -8,6 +8,7 @@ import {
 import {
   AccountWalletType,
   IExchange,
+  Order,
   OrderSide,
   OrderStatus,
   OrderType,
@@ -15,7 +16,12 @@ import {
   TimeInForce,
   TradeMode,
 } from '@itrade/core';
-import { AccountInfoEntity, isValidExchange, PositionEntity } from '@itrade/data-manager';
+import {
+  AccountInfoEntity,
+  isValidExchange,
+  OrderEntity,
+  PositionEntity,
+} from '@itrade/data-manager';
 import { CryptoUtils } from '@itrade/utils/CryptoUtils';
 
 import { getDataManager } from '@/lib/data-manager';
@@ -506,8 +512,172 @@ export async function modifyUserOrder(
     throw new Error('Stop Price must be a positive number');
   }
 
+  // 🆕 Native in-place edit (orderId/clientOrderId preserved at the venue).
+  // Preferred whenever the connector supports it: editOrder?(...) exists and
+  // canEditOrder(symbol, type) says yes. Anything else (Binance spot,
+  // MARKET orders, STOP/TP conditional orders with a stopPrice) falls back
+  // to the legacy cancel+replace path.
+  const account = await getActiveAccount(userId, order.exchange);
+  let connection = await createExchangeConnection(account);
+  try {
+    const exchange = connection.exchange as IExchange;
+    // Both methods are optional on the interface: guard on existence first,
+    // then bind to the instance so the connector keeps its `this`.
+    const hasNativeEdit =
+      typeof exchange.editOrder === 'function' &&
+      typeof exchange.canEditOrder === 'function';
+    const canEdit = hasNativeEdit
+      ? (exchange.canEditOrder as NonNullable<IExchange['canEditOrder']>).bind(exchange)(
+          order.symbol,
+          order.type as OrderType,
+        ) && !nextStopPrice
+      : false;
+
+    if (!canEdit) {
+      // No native support for this symbol/type (or connector predates the
+      // interface) → legacy cancel + replace, exactly as before.
+      return await legacyModify(userId, order, nextQuantity, nextPrice, nextStopPrice);
+    }
+
+    const editOrderFn = (exchange.editOrder as NonNullable<IExchange['editOrder']>).bind(
+      exchange,
+    );
+    const editParams = {
+      symbol: order.symbol,
+      orderId: order.id,
+      clientOrderId: order.clientOrderId,
+      quantity: nextQuantity,
+      price: nextPrice,
+      side: order.side as OrderSide,
+    };
+    let edited: Order;
+    try {
+      try {
+        edited = await editOrderFn(editParams);
+      } catch (error) {
+        // Same OKX demo-fallback as cancel/place: a live-key 401 in the web
+        // layer means the account is demo-scoped; retry once on demo keys.
+        // The retry's OWN outcome flows through the SAME classification below
+        // (it is inside this outer catch, so a retry fatal/rejection is
+        // handled identically to the first attempt's).
+        if (
+          account.exchange.toLowerCase() === 'okx' &&
+          !connection.isDemo &&
+          isUnauthorizedError(error)
+        ) {
+          await connection.exchange.disconnect();
+          connection = await createExchangeConnection(account, {
+            forceDemo: true,
+          });
+          const retryExchange = connection.exchange as IExchange;
+          const retryEdit = retryExchange.editOrder;
+          if (!retryEdit) {
+            throw new Error('OKX demo connection does not support editOrder');
+          }
+          edited = await retryEdit.bind(retryExchange)(editParams);
+        } else {
+          throw error;
+        }
+      }
+    } catch (error) {
+      if ((error as { editOrderFatal?: boolean }).editOrderFatal) {
+        // 🆕 Venue auto-canceled the original (Binance: new total ≤
+        // executedQty). The venue state is KNOWN — sync the DB to CANCELED
+        // (including the final executed amount carried on the error, since
+        // the order is necessarily partially filled here) so the DB stops
+        // showing a live order that no longer exists, then surface the loss
+        // of the original order to the user.
+        const fatalQty = (error as { executedQuantity?: Decimal }).executedQuantity;
+        await dataManager.updateOrder(order.id, {
+          status: OrderStatus.CANCELED,
+          ...(fatalQty ? { executedQuantity: fatalQty } : {}),
+          updateTime: new Date(),
+        } as Partial<OrderEntity>);
+        throw error;
+      } else {
+        // Plain rejection (venue left the original untouched) or transport
+        // error (venue state unknown). The original stays live in both
+        // cases; re-read it so the DB at least matches the venue on the
+        // fields we can observe — via the CURRENT connection (after a demo
+        // retry this is the demo exchange, not the disconnected original) —
+        // then let the caller see the failure.
+        try {
+          const live = await (connection.exchange as IExchange).getOrder(
+            order.symbol,
+            order.id,
+            order.clientOrderId,
+          );
+          await dataManager.updateOrder(order.id, {
+            quantity: live.quantity,
+            price: live.price,
+            executedQuantity: live.executedQuantity,
+            status: live.status,
+            updateTime: live.updateTime || new Date(),
+          } as Partial<OrderEntity>);
+        } catch {
+          // Read-back failed too — nothing more we can do locally; the
+          // periodic order-sync will reconcile.
+        }
+        throw error;
+      }
+    }
+
+    // In-place edit keeps BOTH the venue orderId and the DB row id —
+    // update the existing row instead of saving a replacement order.
+    // executedQuantity is only written when the venue reported one (the
+    // OKX/Coinbase synthesized fallback deliberately omits it — writing
+    // undefined could NULL the column and lose the last-known fill amount).
+    // Same for status: a synthesized NEW must not DOWNGRADE a row that is
+    // already PARTIALLY_FILLED (the fallback means "fill state unknown", not
+    // "no fills") — keep the DB status in that case.
+    const fillUnknown = edited.executedQuantity === undefined;
+    const keepStatus = fillUnknown && order.status === OrderStatus.PARTIALLY_FILLED;
+    const nextStatus = keepStatus ? order.status : edited.status;
+    await dataManager.updateOrder(order.id, {
+      quantity: edited.quantity,
+      price: edited.price,
+      ...(edited.executedQuantity ? { executedQuantity: edited.executedQuantity } : {}),
+      status: nextStatus,
+      updateTime: edited.updateTime || new Date(),
+    } as Partial<OrderEntity>);
+
+    return {
+      ...order,
+      quantity: edited.quantity,
+      price: edited.price,
+      executedQuantity: edited.executedQuantity ?? order.executedQuantity,
+      status: nextStatus,
+      updateTime: edited.updateTime || new Date(),
+    };
+  } finally {
+    // BaseExchange.disconnect() only closes OPEN websockets and clears the
+    // map, so a double call (reassigned connection + finally) is a no-op.
+    await connection.exchange.disconnect();
+  }
+}
+
+/**
+ * 🆕 Legacy modify path — cancel + replace. Used when the venue/connector has
+ * no native editOrder support (e.g. Binance spot) or the order type cannot be
+ * edited in place (MARKET, STOP/TP conditional orders with a stopPrice).
+ * The replacement gets NEW orderId/clientOrderId — that is inherent to this
+ * path and the reason the native path is preferred whenever available.
+ */
+async function legacyModify(
+  userId: string,
+  order: OrderEntity,
+  nextQuantity: Decimal,
+  nextPrice: Decimal,
+  nextStopPrice: Decimal | undefined,
+) {
+  if (!order.exchange) {
+    // Unreachable in practice — modifyUserOrder validates this before
+    // choosing the legacy path — but the parameter type allows undefined.
+    throw new Error('Order exchange is missing');
+  }
+
   // Cancel the existing order
-  await cancelUserOrder(userId, orderId);
+  await cancelUserOrder(userId, order.id);
 
   // Place new order
   try {

@@ -96,6 +96,41 @@ export interface IExchange extends EventEmitter {
   getOpenOrders(symbol?: string): Promise<Order[]>;
   getOrderHistory(symbol?: string, limit?: number): Promise<Order[]>;
 
+  // 🆕 Edit an open order in place — change quantity and/or price WITHOUT
+  // cancelling and re-placing, so the venue keeps BOTH the orderId and the
+  // clientOrderId (venue semantics: OKX POST /api/v5/trade/amend-order,
+  // Binance USDⓈ-M futures PUT /fapi/v1/order, Coinbase Advanced Trade
+  // POST /api/v3/brokerage/orders/edit). Optional — callers must probe
+  // `canEditOrder(symbol, type)` first; connectors that cannot edit in place
+  // leave both methods unimplemented.
+  //
+  // Quantity semantics: `quantity` is the NEW TOTAL order size in base-currency
+  // terms, INCLUDING any already-executed amount (OKX `newSz` / Binance
+  // `quantity` / Coinbase `size` are all totals). The connector converts to
+  // venue units (e.g. contracts via ctVal for OKX SWAP).
+  //
+  // Binance USDⓈ-M requires quantity AND price together (-1106) and `side`
+  // (-1117); connectors that don't need a field simply don't read it.
+  // Binance auto-CANCELS (not rejects) the original when the new total
+  // ≤ executedQty — the connector detects status=CANCELED in the response and
+  // throws an error flagged `editOrderFatal` so the caller can surface the loss
+  // of the original order. Plain rejections leave the original untouched.
+  //
+  // The returned Order reflects the post-edit state (read back from the venue
+  // when the edit response is not a full order object). Throws on failure.
+  editOrder?(params: {
+    symbol: string;
+    orderId?: string;
+    clientOrderId?: string;
+    quantity: Decimal;
+    price?: Decimal;
+    side?: OrderSide;
+  }): Promise<Order>;
+
+  // 🆕 Capability probe: can editOrder run for this symbol + order type?
+  // Synchronous by design — callers route on it with a plain `if`.
+  canEditOrder?(symbol: string, type?: OrderType): boolean;
+
   // Account
   getAccountInfo(): Promise<AccountInfo>;
   getBalances(): Promise<Balance[]>;
