@@ -844,7 +844,12 @@ export class BinanceExchange extends BaseExchange {
     }
 
     const signedParams = this.signRequest(body);
-    const response = await this.futuresClient.put('/fapi/v1/order', {
+    // Signed params ride the QUERY STRING — axios put(url, data, config):
+    // the params object is the THIRD argument. Passing it as the second
+    // (data/body) sent an empty query string, so Binance saw no timestamp
+    // (-1103 "Mandatory parameter 'timestamp' was not sent") — prod bug
+    // 2026-11-06. Same shape as the setLeverage POST above.
+    const response = await this.futuresClient.put('/fapi/v1/order', null, {
       params: signedParams,
     });
 
