@@ -29,6 +29,7 @@ import {
   AccountWalletType,
   TransferFundsParams,
   TransferFundsResult,
+  CredentialVerificationResult,
 } from '@itrade/core';
 
 export type OkxWsType = 'public' | 'private' | 'business';
@@ -89,6 +90,37 @@ export class OKXExchange extends BaseExchange {
     } catch (error) {
       throw new Error(`Failed to connect to OKX: ${error}`);
     }
+  }
+
+  /**
+   * Credential verification for account onboarding: calls a SIGNED endpoint
+   * so wrong apiKey / secretKey / passphrase fail HERE instead of later as
+   * 401s on every balance refresh. Public testConnection() cannot catch this
+   * (verified in prod: account bound with a wrong passphrase passed connect
+   * and then failed 50105 on every sync).
+   * Throws the venue's own code/msg (already redacted by the axios sanitizer
+   * interceptor); callers map them to user-facing errors.
+   */
+  public async verifyCredentials(): Promise<CredentialVerificationResult> {
+    if (!this.credentials) {
+      throw new Error('Exchange credentials not set');
+    }
+    const signed = this.signOKXRequest('GET', '/api/v5/asset/balances', {
+      ccy: '',
+    });
+    const response = await this.httpClient.get(signed.endpoint, {
+      headers: signed.headers,
+    });
+    if (response.data.code !== '0') {
+      throw new Error(`OKX API error ${response.data.code}: ${response.data.msg}`);
+    }
+    // NO balanceSummary on purpose: this funding-account response carries
+    // per-asset RAW quantities, while the console poller persists USD equity
+    // (/api/v5/asset/asset-valuation totalBal). Summing raw BTC+USDT counts
+    // would seed a balance_history row in a different unit than every
+    // later row (false chart cliff + poisoned P&L bootstrap baseline).
+    // Only seed when the summary can be valuation-consistent.
+    return { verified: true };
   }
 
   public async getTicker(symbol: string): Promise<Ticker> {

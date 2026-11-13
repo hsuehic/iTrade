@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { useTranslations } from 'next-intl';
+import { isKnownVerifyErrorReason } from '@/lib/verify-reasons';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -84,6 +85,11 @@ export function ExchangeOnboardingWizard({ onDismiss }: ExchangeOnboardingWizard
   const [step, setStep] = useState<WizardStep>(0);
   const [selectedExchange, setSelectedExchange] = useState<SupportedExchange | ''>('');
   const [saving, setSaving] = useState(false);
+  const [credentialError, setCredentialError] = useState<{
+    reason: string;
+    venueCode: string;
+    venueMessage: string;
+  } | null>(null);
   const [verifyState, setVerifyState] = useState<
     'idle' | 'loading' | 'success' | 'failed'
   >('idle');
@@ -176,8 +182,9 @@ export function ExchangeOnboardingWizard({ onDismiss }: ExchangeOnboardingWizard
     async (data: InlineFormValues) => {
       if (!exchange) return;
       setSaving(true);
+      setCredentialError(null);
       try {
-        await saveAccount({
+        const result = await saveAccount({
           exchange,
           accountId: data.accountId,
           apiKey: data.apiKey,
@@ -185,6 +192,15 @@ export function ExchangeOnboardingWizard({ onDismiss }: ExchangeOnboardingWizard
           passphrase: isOkx ? data.passphrase : undefined,
           isActive: true,
         });
+        // saveAccount RESOLVES with { success: false, error: {...} } when the
+        // venue rejects the credentials — resolution is not success. Surface
+        // the venue's own message instead of proceeding to "done".
+        if (result && result.success === false) {
+          toast.error(tForm('errors.verifyFailed'));
+          setCredentialError(result.error);
+          return;
+        }
+        setCredentialError(null);
         toast.success(tForm('messages.saved'));
         void handleSaveSuccess();
       } catch (error) {
@@ -548,6 +564,32 @@ export function ExchangeOnboardingWizard({ onDismiss }: ExchangeOnboardingWizard
               /* Idle state — inline form */
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onInlineSubmit)} className="space-y-4">
+                  {/* Venue rejected the credentials at save time — show the
+                      venue's own error inline (e.g. OKX 50105 wrong
+                      passphrase) instead of silently failing the wizard. */}
+                  {credentialError ? (
+                    <div
+                      role="alert"
+                      className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm"
+                    >
+                      <p className="font-medium text-destructive">
+                        {/* Whitelist-based fallback (see lib/verify-reasons.ts):
+                            all reason codes exist in both locales; unknown
+                            codes fall back to the generic message. */}
+                        {isKnownVerifyErrorReason(credentialError.reason)
+                          ? tForm(`verifyErrors.${credentialError.reason}`)
+                          : tForm('errors.verifyFailed')}
+                      </p>
+                      {credentialError.venueMessage ? (
+                        <p className="mt-1 text-muted-foreground">
+                          {credentialError.venueCode
+                            ? `[${credentialError.venueCode}] `
+                            : ''}
+                          {credentialError.venueMessage}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {/* Exchange badge (read-only) */}
                   {exchange ? (
                     <div className="flex items-center gap-2 text-sm">

@@ -253,6 +253,31 @@ export interface Balance {
   total: Decimal;
 }
 
+/**
+ * Aggregate balance figures captured at credential-verification time. Units
+ * are VENUE-CONSISTENT by contract: a connector only populates this when it
+ * matches the semantics the console polling loop persists for that venue
+ * (Coinbase: raw per-currency sums, matching its getAccountInfo snapshot;
+ * OKX/Binance return NO summary because their pollers persist USD/BTC-
+ * converted equity that the verification endpoint cannot reproduce — a raw
+ * cross-asset sum would poison the P&L bootstrap baseline).
+ * Written as an initial balance_history row at bind time (first bind only)
+ * so the dashboard is not empty in the window before the poller's first
+ * tick. `balanceSummary` on CredentialVerificationResult is OPTIONAL:
+ * absence simply means the web layer skips the initial snapshot.
+ */
+export interface VerificationBalanceSummary {
+  free: Decimal;
+  locked: Decimal;
+  saving: Decimal;
+  total: Decimal;
+}
+
+export interface CredentialVerificationResult {
+  verified: true;
+  balanceSummary?: VerificationBalanceSummary;
+}
+
 export interface Position {
   symbol: string;
   side: 'long' | 'short';

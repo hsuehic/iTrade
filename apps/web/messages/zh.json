@@ -601,12 +601,28 @@
         "accountIdDescription": "用于识别该账户的昵称。",
         "apiKey": "API Key",
         "apiKeyPlaceholder": "API Key",
+        "apiKeyKeepPlaceholder": "留空则保留当前 API Key",
         "secretKey": "Secret Key",
         "secretKeyPlaceholder": "Secret Key",
+        "secretKeyKeepPlaceholder": "留空则保留当前 Secret Key",
         "passphrase": "Passphrase",
         "passphrasePlaceholder": "Passphrase",
+        "passphraseKeepPlaceholder": "留空则保留当前 Passphrase",
         "activeStatus": "启用状态",
         "activeDescription": "启用或停用该账户的交易。"
+      },
+      "editCredentialsHint": "凭证字段留空即保留当前的 API Key、Secret Key 和 Passphrase；仅在需要更换凭证时填写。",
+      "verifyErrors": {
+        "invalid_api_key": "API Key 或 Secret Key 不正确",
+        "invalid_passphrase": "Passphrase 不正确",
+        "invalid_signature": "签名校验失败——Secret Key 与该 API Key 不匹配",
+        "ip_restriction": "交易所的 IP 白名单未包含我们的服务器",
+        "rate_limited": "交易所限流中，请稍后重试",
+        "timeout": "交易所响应超时，请重试",
+        "unreachable": "暂时无法连接交易所，请稍后重试",
+        "stored_credentials_unreadable": "已保存的凭证无法读取 — 请重新填写全部凭证字段",
+        "venue_error": "交易所返回了异常错误 — 凭证可能是正确的，请稍后重试",
+        "credentials_required": "请重新填写所需的凭证（API key、secret key，OKX 还需要 passphrase）。"
       },
       "save": "保存更改",
       "saving": "保存中...",
@@ -614,7 +630,8 @@
         "saved": "账户保存成功"
       },
       "errors": {
-        "saveFailed": "保存账户失败"
+        "saveFailed": "保存账户失败",
+        "verifyFailed": "凭证校验未通过，账户未保存"
       }
     }
   },

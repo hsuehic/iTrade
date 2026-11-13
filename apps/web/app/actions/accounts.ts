@@ -32,7 +32,17 @@ export async function getAccounts(): Promise<AccountListItem[]> {
   return accountService.getUserAccounts(user.id);
 }
 
-export async function saveAccount(data: AccountDto) {
+export async function saveAccount(data: AccountDto): Promise<
+  | { success: true }
+  | {
+      success: false;
+      error: {
+        reason: string;
+        venueCode: string;
+        venueMessage: string;
+      };
+    }
+> {
   const user = await getUser();
   if (!user) throw new Error('Unauthorized');
 
@@ -40,10 +50,28 @@ export async function saveAccount(data: AccountDto) {
     throw new Error('Invalid exchange');
   }
 
-  await accountService.upsertAccount({
-    ...data,
-    userId: user.id,
-  });
+  try {
+    await accountService.upsertAccount({
+      ...data,
+      userId: user.id,
+    });
+  } catch (error) {
+    // Return (not throw) credential failures: thrown Errors crossing the
+    // server-action serialization boundary lose custom fields (in prod the
+    // message itself is redacted to a digest), so the form could never read
+    // reason/venueCode/venueMessage. A result union survives intact.
+    if (error instanceof accountService.CredentialVerificationError) {
+      return {
+        success: false,
+        error: {
+          reason: error.reason,
+          venueCode: error.venueCode,
+          venueMessage: error.venueMessage,
+        },
+      };
+    }
+    throw error;
+  }
 
   return { success: true };
 }

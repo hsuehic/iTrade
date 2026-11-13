@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslations } from 'next-intl';
+import { isKnownVerifyErrorReason } from '@/lib/verify-reasons';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -67,6 +68,7 @@ export function AccountForm({
 }: AccountFormProps) {
   const t = useTranslations('accounts.form');
   const [loading, setLoading] = useState(false);
+  const isEditing = !!initialData?.id;
   const defaultValues: AccountFormValues = {
     exchange: '',
     accountId: '',
@@ -76,14 +78,46 @@ export function AccountForm({
     isActive: true,
   };
   const form = useForm<AccountFormValues>({
-    defaultValues: initialData ? { ...defaultValues, ...initialData } : defaultValues,
+    // On edit, NEVER pre-fill credentials: apiKey comes from the list as a
+    // MASKED value (`63f7***fd3`) and secretKey/passphrase are not returned
+    // by the API at all. Submitting those would destroy the stored keys
+    // (server now also guards, but keep the form honest).
+    defaultValues: initialData
+      ? {
+          ...defaultValues,
+          exchange: initialData.exchange ?? '',
+          accountId: initialData.accountId ?? '',
+          isActive: initialData.isActive ?? true,
+        }
+      : defaultValues,
   });
   const selectedExchange = form.watch('exchange');
+
+  const [verifyError, setVerifyError] = useState<{
+    reason: string;
+    venueCode: string;
+    venueMessage: string;
+  } | null>(null);
+
+  // Clear the stale error banner when the dialog closes so reopening for a
+  // DIFFERENT account never shows the previous account's failure.
+  useEffect(() => {
+    if (!open) setVerifyError(null);
+  }, [open]);
 
   async function onSubmit(data: AccountFormValues) {
     try {
       setLoading(true);
-      await saveAccount({ ...data, id: initialData?.id });
+      setVerifyError(null);
+      const result = await saveAccount({ ...data, id: initialData?.id });
+      if (result && result.success === false) {
+        // Credential verification failed at the venue — show it inline so
+        // the user sees exactly what the exchange rejected (e.g. OKX 50105
+        // passphrase incorrect) instead of a generic "save failed".
+        setVerifyError(result.error);
+        toast.error(t('errors.verifyFailed'));
+        return;
+      }
       toast.success(t('messages.saved'));
       onSuccess();
       onOpenChange(false);
@@ -103,6 +137,27 @@ export function AccountForm({
           <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
         {!initialData ? <ApiKeyIpWhitelistNotice variant="modal" /> : null}
+        {isEditing ? (
+          <p className="text-sm text-muted-foreground">{t('editCredentialsHint')}</p>
+        ) : null}
+        {verifyError ? (
+          <div
+            role="alert"
+            className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm"
+          >
+            <p className="font-medium text-destructive">
+              {isKnownVerifyErrorReason(verifyError.reason)
+                ? t(`verifyErrors.${verifyError.reason}`)
+                : t('errors.verifyFailed')}
+            </p>
+            {verifyError.venueMessage ? (
+              <p className="mt-1 text-muted-foreground">
+                {verifyError.venueCode ? `[${verifyError.venueCode}] ` : ''}
+                {verifyError.venueMessage}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
@@ -153,7 +208,14 @@ export function AccountForm({
                 <FormItem>
                   <FormLabel>{t('fields.apiKey')}</FormLabel>
                   <FormControl>
-                    <Input placeholder={t('fields.apiKeyPlaceholder')} {...field} />
+                    <Input
+                      placeholder={
+                        isEditing
+                          ? t('fields.apiKeyKeepPlaceholder')
+                          : t('fields.apiKeyPlaceholder')
+                      }
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -168,7 +230,11 @@ export function AccountForm({
                   <FormControl>
                     <Input
                       type="password"
-                      placeholder={t('fields.secretKeyPlaceholder')}
+                      placeholder={
+                        isEditing
+                          ? t('fields.secretKeyKeepPlaceholder')
+                          : t('fields.secretKeyPlaceholder')
+                      }
                       {...field}
                     />
                   </FormControl>
@@ -186,7 +252,11 @@ export function AccountForm({
                     <FormControl>
                       <Input
                         type="password"
-                        placeholder={t('fields.passphrasePlaceholder')}
+                        placeholder={
+                          isEditing
+                            ? t('fields.passphraseKeepPlaceholder')
+                            : t('fields.passphrasePlaceholder')
+                        }
                         {...field}
                       />
                     </FormControl>

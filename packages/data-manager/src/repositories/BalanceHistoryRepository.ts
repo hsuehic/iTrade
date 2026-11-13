@@ -340,6 +340,32 @@ export class BalanceHistoryRepository {
     return result;
   }
 
+  /**
+   * Whether the account has ANY balance_history row, at ANY granularity.
+   * Used by the web bind flow to make the initial-snapshot seed FIRST-BIND
+   * ONLY (credential rotations and venue changes must not re-seed).
+   */
+  async hasAnyHistory(accountInfoId: number): Promise<boolean> {
+    const repos: Repository<BalanceHistoryEntity>[] = [
+      this.monthRepo,
+      this.weekRepo,
+      this.dayRepo,
+      this.hourRepo,
+      this.min30Repo,
+      this.min15Repo,
+      this.min5Repo,
+      this.minRepo,
+    ];
+    for (const repo of repos) {
+      // accountInfo is a relation; filtering on the FK id keeps this a
+      // single indexed count on (accountInfoId) per table, short-circuit on
+      // the first hit.
+      const count = await repo.count({ where: { accountInfo: { id: accountInfoId } } });
+      if (count > 0) return true;
+    }
+    return false;
+  }
+
   private async upsert(
     repo: Repository<BalanceHistoryEntity>,
     accountInfo: AccountInfoEntity,

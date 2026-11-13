@@ -1,8 +1,9 @@
 import crypto from 'crypto';
 
-import axios, { AxiosInstance } from 'axios';
+import { AxiosInstance } from 'axios';
 import { Decimal } from 'decimal.js';
 import { v4 as uuidv4 } from 'uuid';
+import { createRedactedAxiosInstance } from '../base/axiosSanitizer';
 import {
   Order,
   OrderSide,
@@ -30,6 +31,7 @@ import {
   AccountWalletType,
   TransferFundsParams,
   TransferFundsResult,
+  CredentialVerificationResult,
 } from '@itrade/core';
 
 import { BaseExchange } from '../base/BaseExchange';
@@ -124,7 +126,7 @@ export class BinanceExchange extends BaseExchange {
     this.setupWebSocketManagerListeners();
 
     // Initialize Spot API client
-    this.spotClient = axios.create({
+    this.spotClient = createRedactedAxiosInstance({
       baseURL: isTestnet
         ? BinanceExchange.SPOT_TESTNET_URL
         : BinanceExchange.SPOT_MAINNET_URL,
@@ -132,7 +134,7 @@ export class BinanceExchange extends BaseExchange {
     });
 
     // Initialize Futures API client
-    this.futuresClient = axios.create({
+    this.futuresClient = createRedactedAxiosInstance({
       baseURL: isTestnet
         ? BinanceExchange.FUTURES_TESTNET_URL
         : BinanceExchange.FUTURES_MAINNET_URL,
@@ -141,7 +143,7 @@ export class BinanceExchange extends BaseExchange {
 
     // 🆕 COIN-M futures client — the COIN-M wallet lives behind /dapi, which
     // is a different host from /fapi (USDⓈ-M). Same HMAC signing scheme.
-    this.coinFuturesClient = axios.create({
+    this.coinFuturesClient = createRedactedAxiosInstance({
       baseURL: isTestnet
         ? BinanceExchange.COIN_M_TESTNET_URL
         : BinanceExchange.COIN_M_MAINNET_URL,
@@ -200,6 +202,33 @@ export class BinanceExchange extends BaseExchange {
     } catch (error) {
       throw new Error(`Failed to connect to Binance: ${error}`);
     }
+  }
+
+  /**
+   * Credential verification for account onboarding: calls a SIGNED endpoint
+   * so a wrong apiKey/secret fails HERE at bind time instead of later as
+   * -2015 (-1022 signature / -2014 key) on every authenticated call.
+   * Throws the venue's own code/msg; callers map them to user-facing errors.
+   */
+  public async verifyCredentials(): Promise<CredentialVerificationResult> {
+    if (!this.credentials) {
+      throw new Error('Exchange credentials not set');
+    }
+    const params = this.signRequest({ timestamp: Date.now().toString() });
+    const response = await this.httpClient.get('/api/v3/account', {
+      params,
+    });
+    if (response.data.code) {
+      // Binance error payloads: { code: -2014, msg: 'API-key format invalid.' }
+      throw new Error(`Binance API error ${response.data.code}: ${response.data.msg}`);
+    }
+    // NO balanceSummary on purpose: this spot response carries per-asset RAW
+    // quantities, while the console poller persists a BTC-price-converted
+    // equity rollup (spot+futures via getAccountInfo()). Summing raw
+    // BTC+USDT counts would seed a balance_history row in a different unit
+    // than every later row. Only seed when the summary can be
+    // valuation-consistent.
+    return { verified: true };
   }
 
   public async getTicker(symbol: string): Promise<Ticker> {

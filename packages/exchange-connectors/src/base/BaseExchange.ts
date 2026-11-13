@@ -1,8 +1,9 @@
 import { EventEmitter } from 'events';
 
-import axios, { AxiosInstance } from 'axios';
+import { AxiosInstance } from 'axios';
 import WebSocket from 'ws';
 import { Decimal } from 'decimal.js';
+import { createRedactedAxiosInstance } from './axiosSanitizer';
 import {
   IExchange,
   Order,
@@ -35,7 +36,7 @@ export abstract class BaseExchange extends EventEmitter implements IExchange {
     protected readonly wsBaseUrl: string,
   ) {
     super();
-    this.httpClient = axios.create({
+    this.httpClient = createRedactedAxiosInstance({
       baseURL: this.baseUrl,
       timeout: 30000,
     });

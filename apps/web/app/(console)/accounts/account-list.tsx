@@ -237,7 +237,6 @@ export function AccountList({ initialAccounts }: { initialAccounts: AccountListI
                 id: editingAccount.id,
                 exchange: editingAccount.exchange,
                 accountId: editingAccount.accountId,
-                apiKey: editingAccount.apiKey,
                 isActive: editingAccount.isActive,
               } satisfies AccountFormInitialData)
             : undefined

@@ -28,8 +28,14 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    // Validate body
-    if (!body.exchange || !body.apiKey || !body.secretKey) {
+    // Validate body.
+    // On CREATE, credentials are mandatory. On EDIT (id present), credential
+    // fields may be empty/omitted — the service keeps the stored values
+    // (blank = "keep existing", masked apiKey = "keep existing").
+    if (!body.exchange) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+    if (!body.id && (!body.apiKey || !body.secretKey)) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
@@ -47,6 +53,19 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, account });
   } catch (error) {
+    // Credential failures are user input errors, not server faults: return a
+    // structured 400 so the client can render the venue's own message.
+    if (error instanceof accountService.CredentialVerificationError) {
+      return NextResponse.json(
+        {
+          error: 'Invalid credentials',
+          reason: error.reason,
+          venueCode: error.venueCode,
+          venueMessage: error.venueMessage,
+        },
+        { status: 400 },
+      );
+    }
     console.error('Failed to save account:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }

@@ -1,8 +1,9 @@
 import { EventEmitter } from 'events';
 
-import axios, { AxiosInstance } from 'axios';
+import { AxiosInstance } from 'axios';
 import WebSocket from 'ws';
 import { Ticker, OrderBook, Trade, Kline } from '@itrade/core';
+import { createRedactedAxiosInstance } from './axiosSanitizer';
 
 export abstract class MarketDataExchange extends EventEmitter {
   protected httpClient: AxiosInstance;
@@ -16,7 +17,10 @@ export abstract class MarketDataExchange extends EventEmitter {
     protected readonly wsBaseUrl: string,
   ) {
     super();
-    this.httpClient = axios.create({ baseURL: this.baseUrl, timeout: 30000 });
+    this.httpClient = createRedactedAxiosInstance({
+      baseURL: this.baseUrl,
+      timeout: 30000,
+    });
   }
 
   public get isConnected(): boolean {

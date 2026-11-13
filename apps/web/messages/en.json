@@ -601,12 +601,28 @@
         "accountIdDescription": "A nickname to identify this account.",
         "apiKey": "API Key",
         "apiKeyPlaceholder": "API Key",
+        "apiKeyKeepPlaceholder": "Leave blank to keep current key",
         "secretKey": "Secret Key",
         "secretKeyPlaceholder": "Secret Key",
+        "secretKeyKeepPlaceholder": "Leave blank to keep current secret",
         "passphrase": "Passphrase",
         "passphrasePlaceholder": "Passphrase",
+        "passphraseKeepPlaceholder": "Leave blank to keep current passphrase",
         "activeStatus": "Active Status",
         "activeDescription": "Enable or disable trading for this account."
+      },
+      "editCredentialsHint": "Leave the credential fields blank to keep the current API key, secret and passphrase. Fill them in only if you want to replace the credentials.",
+      "verifyErrors": {
+        "invalid_api_key": "API key or secret key is incorrect",
+        "invalid_passphrase": "Passphrase is incorrect",
+        "invalid_signature": "Signature check failed — the secret key does not match this API key",
+        "ip_restriction": "Your exchange IP whitelist does not include our server",
+        "rate_limited": "The exchange is rate-limiting us — please retry in a moment",
+        "timeout": "The exchange did not respond in time — please retry",
+        "unreachable": "Could not reach the exchange — please retry later",
+        "stored_credentials_unreadable": "Stored credentials could not be read — please re-enter all credential fields",
+        "venue_error": "The exchange returned an unexpected error — the credentials may be fine, please retry",
+        "credentials_required": "Please re-enter the required credentials (API key, secret key and, for OKX, the passphrase)."
       },
       "save": "Save changes",
       "saving": "Saving...",
@@ -614,7 +630,8 @@
         "saved": "Account saved successfully"
       },
       "errors": {
-        "saveFailed": "Failed to save account"
+        "saveFailed": "Failed to save account",
+        "verifyFailed": "Credential verification failed — account was not saved"
       }
     }
   },

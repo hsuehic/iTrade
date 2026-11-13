@@ -1,8 +1,9 @@
 import crypto from 'crypto';
 
-import axios, { AxiosInstance } from 'axios';
+import { AxiosInstance } from 'axios';
 import { Decimal } from 'decimal.js';
 import { v4 as uuidv4 } from 'uuid';
+import { createRedactedAxiosInstance } from '../base/axiosSanitizer';
 import {
   Order,
   OrderSide,
@@ -21,6 +22,7 @@ import {
   SymbolInfo,
   TradeMode,
   Transfer,
+  CredentialVerificationResult,
 } from '@itrade/core';
 
 import { BaseExchange } from '../base/BaseExchange';
@@ -62,7 +64,7 @@ export class CoinbaseExchange extends BaseExchange {
         : CoinbaseExchange.MAINNET_BASE_URL);
 
     super('coinbase', base, CoinbaseExchange.MAINNET_WS_URL);
-    this.publicHttpClient = axios.create({
+    this.publicHttpClient = createRedactedAxiosInstance({
       baseURL: CoinbaseExchange.PUBLIC_BASE_URL,
       timeout: 30000,
     });
@@ -133,6 +135,64 @@ export class CoinbaseExchange extends BaseExchange {
     } catch (error) {
       throw new Error(`Failed to connect to Coinbase: ${error}`);
     }
+  }
+
+  /**
+   * Credential verification for account onboarding: calls an AUTHENTICATED
+   * endpoint so wrong apiKey/secret/JWT fails HERE at bind time instead of
+   * later as 401s on every balance refresh.
+   * Throws the venue's own status/message; callers map them to user-facing
+   * errors.
+   */
+  public async verifyCredentials(): Promise<CredentialVerificationResult> {
+    if (!this.credentials) {
+      throw new Error('Exchange credentials not set');
+    }
+    // Axios rejects non-2xx by default (validateStatus), so any auth
+    // failure surfaces as an AxiosError here — mapped upstream by
+    // mapVenueError. A 200 means the credentials are valid.
+    const response = await this.httpClient.get('/api/v3/brokerage/accounts', {
+      params: { limit: 250 },
+    });
+    // Derive the aggregate summary ONLY when it is both SAFE to compute and
+    // UNIT-CONSISTENT with what the console poller persists. Coinbase's
+    // poller path (getAccountInfo) has NO totalEquity valuation — its
+    // snapshots persist exactly Σ(free) / Σ(locked) / Σ(free+locked) across
+    // currencies via mapBrokerageAccountToBalance — so the same sums here
+    // are the SAME unit as every later row. This is why Coinbase seeds a
+    // summary while OKX/Binance do not.
+    // FAIL-OPEN CONTRACT: auth already succeeded above; any parse hiccup
+    // (missing hold, malformed value, non-array accounts) must NOT fail
+    // the bind — return verified with no summary and let the poller handle
+    // balances.
+    try {
+      const accounts: unknown[] = Array.isArray(response.data?.accounts)
+        ? response.data.accounts
+        : [];
+      // Paginated (has_next) or empty responses are not a full account
+      // list — skip the seed rather than understate equity.
+      if (!response.data?.has_next && accounts.length > 0) {
+        let free = new Decimal(0);
+        let locked = new Decimal(0);
+        for (const account of accounts) {
+          const b = this.mapBrokerageAccountToBalance(account);
+          free = free.add(b.free);
+          locked = locked.add(b.locked);
+        }
+        return {
+          verified: true,
+          balanceSummary: {
+            free,
+            locked,
+            saving: new Decimal(0),
+            total: free.add(locked),
+          },
+        };
+      }
+    } catch {
+      // Summary derivation is best-effort; verification itself succeeded.
+    }
+    return { verified: true };
   }
 
   public async getTicker(symbol: string): Promise<Ticker> {
@@ -573,6 +633,14 @@ export class CoinbaseExchange extends BaseExchange {
     const balances: Balance[] = accounts.map((a: any) =>
       this.mapBrokerageAccountToBalance(a),
     );
+    // NOTE (balance-unit contract): this poller snapshot path intentionally
+    // sets NO totalEquity — its totals are raw per-currency sums
+    // (Σfree+Σlocked). verifyCredentials() seeds an initial balance_history
+    // row with EXACTLY these semantics, which is what makes the seed
+    // unit-consistent. If you ever add USD valuation here (totalEquity),
+    // the seed in verifyCredentials becomes unit-inconsistent and MUST be
+    // removed (see CoinbaseExchange.verifyCredentials + the
+    // verifyCredentials tests that pin the raw-sum contract).
     return {
       balances,
       canTrade: true,
