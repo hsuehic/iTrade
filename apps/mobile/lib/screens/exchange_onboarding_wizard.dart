@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -6,11 +7,8 @@ import '../design/tokens/color.dart';
 import '../services/account_service.dart';
 import '../services/api_client.dart';
 import '../services/copy_service.dart';
+import '../services/server_ips_service.dart';
 import '../widgets/copy_text.dart';
-
-/// Static egress IP of the iTrade production server (GCE).
-/// Mirrors `ITRADE_SERVER_IP` from `apps/web/lib/itrade-server-ip.ts`.
-const String kItradeServerIp = '34.143.244.107';
 
 /// Give the server time to persist + sync the new account before probing
 /// the analytics endpoint (avoids stale-cache false negatives).
@@ -218,6 +216,12 @@ class _ExchangeOnboardingWizardState extends State<ExchangeOnboardingWizard> {
   bool _saving = false;
   _VerifyState _verifyState = _VerifyState.idle;
 
+  /// Admin-configured server IP whitelist (comma-joined for the notices).
+  /// Starts at the built-in defaults so the notices render instantly;
+  /// replaced with the backend list once GET /api/config/server-ips
+  /// resolves. On failure the defaults stay.
+  List<String> _serverIps = kDefaultServerIps;
+
   /// Whether the saved exchange appeared in the analytics `exchanges[]`.
   /// Mirrors web: a saved account without analytics data yet still counts
   /// as connected (balance data may lag) — only shown as a softer message.
@@ -230,6 +234,21 @@ class _ExchangeOnboardingWizardState extends State<ExchangeOnboardingWizard> {
   final _passphraseController = TextEditingController();
   bool _obscureSecret = true;
   bool _obscurePassphrase = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadServerIps();
+  }
+
+  /// Fetch the admin-configured server IP whitelist (public read-only
+  /// endpoint). Falls back to the built-in defaults on failure.
+  Future<void> _loadServerIps() async {
+    final ips = await fetchServerIps();
+    if (!mounted) return;
+    if (listEquals(ips, _serverIps)) return;
+    setState(() => _serverIps = ips);
+  }
 
   @override
   void dispose() {
@@ -1242,8 +1261,8 @@ class _ExchangeOnboardingWizardState extends State<ExchangeOnboardingWizard> {
           descriptionKey:
               'screen.exchange_onboarding.createApikey.ipWhitelist.description',
           descriptionFallback:
-              'Before entering credentials, enable IP whitelist on your exchange API key and add {{serverIp}} to the allowed list.',
-          params: const {'serverIp': kItradeServerIp},
+              'Before entering credentials, enable IP whitelist on your exchange API key and add {{serverIps}} to the allowed list (separate multiple entries with commas).',
+          params: {'serverIps': _serverIps.join(', ')},
         ),
         SizedBox(height: 12.w),
         // Security tip.
@@ -1254,8 +1273,8 @@ class _ExchangeOnboardingWizardState extends State<ExchangeOnboardingWizard> {
           descriptionKey:
               'screen.exchange_onboarding.createApikey.securityTip.description',
           descriptionFallback:
-              "Add the iTrade server IP {{serverIp}} to your API key's IP whitelist. This ensures only our server can access your account.",
-          params: const {'serverIp': kItradeServerIp},
+              "Add the iTrade server IPs {{serverIps}} to your API key's IP whitelist (separate multiple entries with commas). This ensures only our servers can access your account.",
+          params: {'serverIps': _serverIps.join(', ')},
         ),
         SizedBox(height: 20.w),
         _buildStepNavButtons(

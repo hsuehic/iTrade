@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { ShieldAlert } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -13,7 +13,8 @@ interface ApiKeyIpWhitelistNoticeProps {
 /**
  * Rich-text callback for the <ips> tag. chunks arrives as the
  * comma-joined server IP string; split it back apart so each IP gets its
- * own highlighted code chip.
+ * own highlighted code chip, with ', ' separators between chips so the
+ * list reads (and copies) as comma-separated.
  */
 function ipHighlight(chunks: ReactNode): ReactNode {
   const text = typeof chunks === 'string' ? chunks : String(chunks);
@@ -23,13 +24,13 @@ function ipHighlight(chunks: ReactNode): ReactNode {
         .split(',')
         .map((ip) => ip.trim())
         .filter(Boolean)
-        .map((ip) => (
-          <code
-            key={ip}
-            className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm font-semibold text-foreground"
-          >
-            {ip}
-          </code>
+        .map((ip, index) => (
+          <Fragment key={ip}>
+            {index > 0 ? ', ' : null}
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm font-semibold text-foreground">
+              {ip}
+            </code>
+          </Fragment>
         ))}
     </>
   );
