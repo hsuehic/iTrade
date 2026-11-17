@@ -189,7 +189,6 @@ services:
       start_period: 30s
     networks:
       - itrade-net
-      - proxy-net
     logging:
       driver: 'json-file'
       options:
@@ -212,5 +211,3 @@ volumes:
 networks:
   itrade-net:
     driver: bridge
-  proxy-net:
-    external: true
