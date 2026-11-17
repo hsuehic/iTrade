@@ -463,7 +463,7 @@
         },
         "securityTip": {
           "title": "Security tip: IP whitelist",
-          "description": "Add the iTrade server IP {serverIp} to your API key's IP whitelist. This ensures only our server can access your account."
+          "description": "Add the iTrade server IPs {serverIps} to your API key's IP whitelist. This ensures only our servers can access your account."
         }
       },
       "addToItrade": {
@@ -506,8 +506,8 @@
     "manageDescription": "Connect your exchange accounts (Binance, OKX, Coinbase) to enable trading. Restrict each API key with IP whitelisting before saving credentials.",
     "ipWhitelist": {
       "title": "Secure your API keys with IP whitelisting",
-      "description": "When creating an API key on your exchange, enable IP whitelist restrictions and add the iTrade server IP <ip>{serverIp}</ip> to the allowed list. This limits API access to our servers only—helping protect your account even if credentials are exposed.",
-      "modalDescription": "Before entering credentials, enable IP whitelist on your exchange API key and add <ip>{serverIp}</ip> to the allowed list."
+      "description": "When creating an API key on your exchange, enable IP whitelist restrictions and add the iTrade server IPs <ips>{serverIps}</ips> to the allowed list (separate multiple entries with commas). This limits API access to our servers only—helping protect your account even if credentials are exposed.",
+      "modalDescription": "Before entering credentials, enable IP whitelist on your exchange API key and add <ips>{serverIps}</ips> to the allowed list (separate multiple entries with commas)."
     },
     "list": {
       "title": "Exchange Accounts",

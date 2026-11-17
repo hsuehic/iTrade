@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/select';
 import { IconLoader2 } from '@tabler/icons-react';
 import { authClient } from '@/lib/auth-client';
+import { ServerIpWhitelistCard } from '@/components/admin/server-ip-whitelist-card';
 
 type SystemSettings = {
   platformName: string;
@@ -500,6 +501,8 @@ export default function AdminSystemSettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          <ServerIpWhitelistCard />
         </div>
       </div>
     </SidebarInset>

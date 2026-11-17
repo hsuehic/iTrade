@@ -21,7 +21,8 @@ export type SettingKey =
   | 'ai_model'
   | 'gemini_api_key'
   | 'gemini_model'
-  | 'chat_title';
+  | 'chat_title'
+  | 'server_ip_whitelist';
 
 interface SettingsCache {
   values: Partial<Record<SettingKey, string>>;
@@ -112,4 +113,83 @@ export async function deleteSetting(key: SettingKey): Promise<void> {
 export function invalidateSettingsCache(): void {
   globalThis.__settingsCache = undefined;
   globalThis.__aiModelCache = undefined;
+}
+
+// ── Server IP whitelist ───────────────────────────────────────────────────────
+
+/**
+ * IPs that users should add to their exchange API key's IP whitelist.
+ *
+ * Stored in `app_settings` under `server_ip_whitelist` as a JSON array string
+ * so admins can add / remove entries at runtime (admin Settings page) without
+ * a redeploy. When the key is absent the DEFAULT list below is used, so a
+ * fresh deployment shows the correct IPs before any admin edit.
+ */
+export const DEFAULT_SERVER_IP_WHITELIST: string[] = ['202.73.36.25', '34.143.244.107'];
+
+/**
+ * Strict IPv4 validator — dotted quad, each octet 0-255, no CIDR.
+ * Kept local (duplicated in lib/itrade-server-ip.ts for client bundles) so
+ * this server module has no client-side import graph concerns.
+ */
+const IPV4_PATTERN =
+  /^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}$/;
+
+export function isValidIp(ip: string): boolean {
+  return IPV4_PATTERN.test(ip);
+}
+
+/** Parse the stored JSON value; returns null when unset or malformed. */
+function parseStoredIps(raw: string | undefined): string[] | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    const ips = parsed.filter((v): v is string => typeof v === 'string');
+    return ips.length > 0 ? ips : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read the configured server IP whitelist (admin-managed), falling back to
+ * DEFAULT_SERVER_IP_WHITELIST when not configured. Never throws — display
+ * surfaces (accounts page, onboarding wizard) must render even if the DB
+ * read fails.
+ */
+export async function getServerIpWhitelist(): Promise<string[]> {
+  try {
+    const raw = await getSetting('server_ip_whitelist');
+    return parseStoredIps(raw) ?? DEFAULT_SERVER_IP_WHITELIST;
+  } catch {
+    return DEFAULT_SERVER_IP_WHITELIST;
+  }
+}
+
+/**
+ * Persist the full whitelist (admin API only). Validates every entry and
+ * rejects duplicates. Returns the normalized list on success; throws Error
+ * with a human-readable message on invalid input.
+ */
+export async function setServerIpWhitelist(ips: string[]): Promise<string[]> {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const raw of ips) {
+    const ip = raw.trim();
+    if (!ip) continue;
+    if (!isValidIp(ip)) {
+      throw new Error(`Invalid IP address: ${ip}`);
+    }
+    if (seen.has(ip)) {
+      throw new Error(`Duplicate IP address: ${ip}`);
+    }
+    seen.add(ip);
+    normalized.push(ip);
+  }
+  if (normalized.length === 0) {
+    throw new Error('IP whitelist cannot be empty');
+  }
+  await setSetting('server_ip_whitelist', JSON.stringify(normalized));
+  return normalized;
 }

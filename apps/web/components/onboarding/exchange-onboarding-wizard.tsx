@@ -48,7 +48,7 @@ import {
   EXCHANGE_API_PERMISSIONS,
   EXCHANGE_KYC_GUIDE_LINKS,
 } from '@/lib/exchange-registration-links';
-import { ITRADE_SERVER_IP } from '@/lib/itrade-server-ip';
+import { useServerIpWhitelist } from '@/hooks/use-server-ip-whitelist';
 import { ApiKeyIpWhitelistNotice } from '@/components/accounts/api-key-ip-whitelist-notice';
 import { saveAccount } from '@/app/actions/accounts';
 import { toast } from 'sonner';
@@ -81,6 +81,7 @@ const VERIFY_DELAY_MS = 1500;
 export function ExchangeOnboardingWizard({ onDismiss }: ExchangeOnboardingWizardProps) {
   const t = useTranslations('dashboard.onboarding');
   const tForm = useTranslations('accounts.form');
+  const { ips: serverIps } = useServerIpWhitelist();
   const router = useRouter();
   const [step, setStep] = useState<WizardStep>(0);
   const [selectedExchange, setSelectedExchange] = useState<SupportedExchange | ''>('');
@@ -491,7 +492,7 @@ export function ExchangeOnboardingWizard({ onDismiss }: ExchangeOnboardingWizard
               </AlertTitle>
               <AlertDescription className="text-amber-900 dark:text-amber-100">
                 {t('createApikey.securityTip.description', {
-                  serverIp: ITRADE_SERVER_IP,
+                  serverIps: serverIps.join(', '),
                 })}
               </AlertDescription>
             </Alert>
