@@ -24,18 +24,13 @@ Since we're using pre-built Docker images from GitHub Container Registry (GHCR),
 ├── app/
 │   ├── docker-compose.prod.yml          ← Container orchestration
 │   └── deploy/
-│       ├── certbot-init.sh              ← SSL certificate setup
 │       ├── nginx.conf.template          ← Nginx configuration template
 │       ├── env.*.template               ← Environment file templates
 │       └── *.sh                         ← Utility scripts
 ├── .env.console                         ← Console app environment
 ├── .env.web                             ← Web app environment
 ├── .env.db                              ← Database environment
-├── .env.certbot                         ← SSL certificate environment
-├── nginx.conf                           ← Generated Nginx config
-└── certbot/                             ← SSL certificates
-    ├── certs/
-    └── webroot/
+
 ```
 
 ## 🔄 Deployment Process
@@ -71,7 +66,6 @@ Since we're using pre-built Docker images from GitHub Container Registry (GHCR),
 ```bash
 # Download deployment files
 curl -fsSL "https://raw.githubusercontent.com/REPO/SHA/docker-compose.prod.yml" -o docker-compose.prod.yml
-curl -fsSL "https://raw.githubusercontent.com/REPO/SHA/deploy/certbot-init.sh" -o deploy/certbot-init.sh
 
 # Pull pre-built images
 docker compose -f docker-compose.prod.yml pull
