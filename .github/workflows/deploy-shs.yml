@@ -1,0 +1,223 @@
+# =============================================================
+# iTrade — GitHub Actions CD: Deploy to self-hosted server (SHS)
+# =============================================================
+#
+# Trigger: manual dispatch only (Actions → Run workflow)
+#
+# Does not build images. Reuses the GHCR images already pushed by
+# "Deploy to GCE" for the same commit SHA:
+#   ghcr.io/<repo>/{console,schema-migrator,web}:<sha>
+#
+# Then SSH to the self-hosted server and run deploy/deploy-remote.sh
+# (pre-pull → selective recreate; DB stays running).
+#
+# Required GitHub Secrets (injected as environment variables):
+#   SHS_HOST  → server IP or hostname
+#   SHS_PORT  → SSH port (e.g. 2222)
+#   SHS_USER  → SSH username
+#   SHS_KEY   → base64-encoded SSH private key (same as GCE_SSH_PRIVATE_KEY)
+#
+# Required GitHub Permissions:
+#   packages: read → verify and let the server pull existing GHCR images
+# =============================================================
+
+name: Deploy to self hosted Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Commit SHA already built by Deploy to GCE. Empty = selected branch HEAD.'
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: deploy-shs
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  REGISTRY: ghcr.io
+
+jobs:
+  deploy:
+    name: 🚀 Deploy to self hosted Server
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    env:
+      SHS_HOST: ${{ secrets.SHS_HOST }}
+      SHS_PORT: ${{ secrets.SHS_PORT }}
+      SHS_USER: ${{ secrets.SHS_USER }}
+      SHS_KEY: ${{ secrets.SHS_KEY }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Resolve image commit
+        id: image
+        run: |
+          INPUT_SHA="${{ github.event.inputs.commit_sha }}"
+          if [ -n "$INPUT_SHA" ]; then
+            git fetch --no-tags --depth=1 origin "$INPUT_SHA"
+            SHA=$(git rev-parse FETCH_HEAD)
+          else
+            SHA="${{ github.sha }}"
+          fi
+
+          REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "prefix=${{ env.REGISTRY }}/${REPO_LC}" >> "$GITHUB_OUTPUT"
+          echo "Image commit: ${SHA}"
+
+      - name: Verify GCE-built images exist
+        run: |
+          PREFIX="${{ steps.image.outputs.prefix }}"
+          SHA="${{ steps.image.outputs.sha }}"
+
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+          MISSING=0
+          for name in console schema-migrator web; do
+            IMAGE="${PREFIX}/${name}:${SHA}"
+            if docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+              echo "✅ ${IMAGE}"
+            else
+              echo "❌ Missing ${IMAGE}"
+              MISSING=1
+            fi
+          done
+
+          if [ "$MISSING" -ne 0 ]; then
+            echo "These images are produced by the Deploy to GCE workflow."
+            echo "Run that workflow for this commit first, or pass a commit_sha that it already built."
+            exit 1
+          fi
+
+      - name: Setup SSH agent
+        run: |
+          if [ -z "${SHS_HOST}" ] || [ -z "${SHS_PORT}" ] || [ -z "${SHS_USER}" ] || [ -z "${SHS_KEY}" ]; then
+            echo "❌ Missing SHS_HOST, SHS_PORT, SHS_USER, or SHS_KEY"
+            echo "Add them as repository Actions secrets. SHS_KEY must be base64-encoded."
+            exit 1
+          fi
+
+          if ! [[ "${SHS_PORT}" =~ ^[0-9]+$ ]]; then
+            echo "❌ SHS_PORT must be a numeric SSH port"
+            exit 1
+          fi
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          echo "$SHS_KEY" | base64 -d > ~/.ssh/shs_deploy_key 2>/dev/null || {
+            echo "❌ Failed to decode SSH private key"
+            echo "SHS_KEY must be the base64 encoding of the private key, not the PEM text or a file path."
+            exit 1
+          }
+          chmod 600 ~/.ssh/shs_deploy_key
+
+          if ! ssh-keygen -l -f ~/.ssh/shs_deploy_key >/dev/null 2>&1; then
+            echo "❌ SHS_KEY did not decode to a valid SSH private key"
+            echo "Encode the key file with: base64 < key-file | tr -d '\\n'"
+            exit 1
+          fi
+
+          eval "$(ssh-agent -s)"
+          ssh-add ~/.ssh/shs_deploy_key
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+
+          echo "✅ SSH agent configured successfully"
+          echo "Target: ${SHS_USER}@${SHS_HOST}:${SHS_PORT}"
+
+      - name: Add SHS host to known_hosts
+        run: |
+          echo "🔍 Adding SHS host to known_hosts..."
+          echo "Target host: ${SHS_HOST}:${SHS_PORT}"
+
+          for attempt in 1 2 3; do
+            if ssh-keyscan -p "${SHS_PORT}" -H -T 10 "${SHS_HOST}" >> ~/.ssh/known_hosts 2>/dev/null; then
+              echo "✅ Host keys added successfully (attempt $attempt)"
+              break
+            else
+              echo "⚠️  Host key scan failed (attempt $attempt)"
+              if [ "$attempt" -eq 3 ]; then
+                echo "❌ All host key scan attempts failed"
+                echo "Will attempt connection with StrictHostKeyChecking=no"
+              fi
+              sleep 2
+            fi
+          done
+
+      - name: Test SSH connection
+        run: |
+          echo "🔍 Testing SSH connection..."
+          echo "User: ${SHS_USER}"
+          echo "Host: ${SHS_HOST}"
+          echo "Port: ${SHS_PORT}"
+
+          SSH_OPTS="-p ${SHS_PORT} -o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -i ~/.ssh/shs_deploy_key -o IdentitiesOnly=yes"
+
+          if ssh $SSH_OPTS -o StrictHostKeyChecking=yes "${SHS_USER}@${SHS_HOST}" "echo 'SSH connection successful'; whoami; pwd" 2>/dev/null; then
+            echo "✅ SSH connection working with StrictHostKeyChecking=yes"
+          elif ssh $SSH_OPTS -o StrictHostKeyChecking=no "${SHS_USER}@${SHS_HOST}" "echo 'SSH connection successful'; whoami; pwd" 2>/dev/null; then
+            echo "✅ SSH connection working with StrictHostKeyChecking=no"
+            echo "⚠️  Host key verification was bypassed"
+          else
+            echo "❌ SSH connection failed"
+            echo "Common issues:"
+            echo "  - SHS_HOST: incorrect IP address or hostname"
+            echo "  - SHS_PORT: SSH is not listening on this port"
+            echo "  - SHS_USER: incorrect username"
+            echo "  - SHS_KEY: key is not in the server authorized_keys"
+            echo "  - Network: firewall blocking the SSH port"
+            exit 1
+          fi
+
+      - name: Deploy on self hosted server
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+          COMMIT_SHA: ${{ steps.image.outputs.sha }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          # Manual deploy of an existing image. Run schema sync so the
+          # database matches that image; deploy-remote.sh skips it only
+          # when SCHEMA_CHANGED=false.
+          SCHEMA_CHANGED: 'true'
+          SCHEMA_CHECK_REASON: reuse-gce-image
+        run: |
+          IMAGE_PREFIX="${{ steps.image.outputs.prefix }}"
+
+          echo "🚀 Starting deployment to self-hosted server..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  Reusing GCE images for: ${COMMIT_SHA:0:12}"
+          echo "  Target: ${SHS_USER}@${SHS_HOST}:${SHS_PORT}"
+          echo "  Strategy: Pre-pull existing images → selective recreate"
+          echo "  Schema check: ${SCHEMA_CHANGED} (${SCHEMA_CHECK_REASON})"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          SSH_OPTS="-o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=no -i ~/.ssh/shs_deploy_key -o IdentitiesOnly=yes"
+
+          echo "▶ Uploading deploy script..."
+          scp -P "$SHS_PORT" $SSH_OPTS deploy/deploy-remote.sh "$SHS_USER@$SHS_HOST:/tmp/deploy-remote.sh"
+
+          echo "▶ Executing deploy script on SHS..."
+          ssh -p "$SHS_PORT" $SSH_OPTS "$SHS_USER@$SHS_HOST" \
+            "GITHUB_REPOSITORY='$GITHUB_REPOSITORY' COMMIT_SHA='$COMMIT_SHA' GHCR_TOKEN='$GHCR_TOKEN' GH_ACTOR='$GH_ACTOR' IMAGE_PREFIX='$IMAGE_PREFIX' SCHEMA_CHANGED='$SCHEMA_CHANGED' bash /tmp/deploy-remote.sh"
+
+      - name: Report deployment status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Deployment succeeded: ${{ steps.image.outputs.sha }}"
+          else
+            echo "❌ Deployment failed: ${{ steps.image.outputs.sha }}"
+            exit 1
+          fi

@@ -80,13 +80,13 @@ docker compose down -v          # ❌ 危险！-v 会删除 volume，数据丢�
 
 ### 推荐规格
 
-| 项目 | 推荐值 |
-|------|--------|
+| 项目     | 推荐值                           |
+| -------- | -------------------------------- |
 | 机器类型 | `e2-medium`（2 vCPU / 4 GB RAM） |
-| 操作系统 | Debian 12 (Bookworm) |
-| 磁盘 | 30 GB SSD（`pd-ssd`） |
-| 区域 | 选择离用户最近的区域 |
-| 网络标签 | `http-server`, `https-server` |
+| 操作系统 | Debian 12 (Bookworm)             |
+| 磁盘     | 30 GB SSD（`pd-ssd`）            |
+| 区域     | 选择离用户最近的区域             |
+| 网络标签 | `http-server`, `https-server`    |
 
 ### 通过 gcloud CLI 创建
 
@@ -275,8 +275,10 @@ docker exec itrade-db pg_isready -U itrade
 
 ```bash
 # 在 GCE 上执行
-cat ~/.ssh/id_ed25519_gce_deploy        # 私钥 → 用于 GitHub Secret
 cat ~/.ssh/id_ed25519_gce_deploy.pub    # 公钥 → 需加入 authorized_keys
+
+# 私钥先 base64，再写入 GitHub Secret GCE_SSH_PRIVATE_KEY
+base64 -w 0 ~/.ssh/id_ed25519_gce_deploy
 ```
 
 确保公钥已加入 GCE 的 authorized_keys：
@@ -290,11 +292,11 @@ chmod 600 ~/.ssh/authorized_keys
 
 进入 GitHub 仓库 → **Settings → Secrets and variables → Actions → New repository secret**，添加以下三个 secret：
 
-| Secret 名称 | 值说明 |
-|-------------|--------|
-| `GCE_HOST` | GCE 实例的外部 IP 地址（或绑定的域名） |
-| `GCE_USER` | GCE 上的 SSH 用户名（如 `xiaowei_xue`） |
-| `GCE_SSH_PRIVATE_KEY` | `~/.ssh/id_ed25519_gce_deploy` 私钥的完整内容（含 `-----BEGIN...` 和 `-----END...`） |
+| Secret 名称           | 值说明                                                                                                           |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `GCE_HOST`            | GCE 实例的外部 IP 地址（或绑定的域名）                                                                           |
+| `GCE_USER`            | GCE 上的 SSH 用户名（如 `xiaowei_xue`）                                                                          |
+| `GCE_SSH_PRIVATE_KEY` | `~/.ssh/id_ed25519_gce_deploy` 私钥的 **base64**。workflow 会先 `base64 -d` 再使用。不要粘贴 `-----BEGIN` 原文。 |
 
 ### 5.3 验证 GitHub Actions 配置
 
@@ -314,7 +316,35 @@ git push origin main
 2. 勾选 `Force rebuild all Docker images (no cache)`
 3. 点击 **Run workflow**
 
-### 5.5 工作流程说明
+### 5.5 手动部署到自建服务器（SHS）
+
+工作流 **Deploy to self hosted Server** 只支持手动触发，不会在 push 时运行，也不会重新构建镜像。它复用 `Deploy to GCE` 已经推到 GHCR 的 `console`、`schema-migrator`、`web` 镜像（标签为 commit SHA），再通过 SSH 在自建服务器上执行 `deploy/deploy-remote.sh`。服务器上需要已有 Docker、`/opt/itrade/.env.console`、`.env.db`、`.env.web`，以及对应的 `authorized_keys`。目标 commit 必须已经由 GCE 工作流构建成功。
+
+在 **Settings → Secrets and variables → Actions** 添加以下 repository secrets。`SHS_KEY` 与 `GCE_SSH_PRIVATE_KEY` 一样，填私钥的 base64，不要填 PEM 原文或本地路径。
+
+```bash
+# macOS
+base64 < deploy/envs/self_hosted_server_deploy_key | tr -d '\n'
+
+# Linux
+base64 -w 0 deploy/envs/self_hosted_server_deploy_key
+```
+
+| Secret 名称 | 值说明                  |
+| ----------- | ----------------------- |
+| `SHS_HOST`  | 自建服务器 IP 或域名    |
+| `SHS_PORT`  | SSH 端口（例如 `2222`） |
+| `SHS_USER`  | SSH 用户名              |
+| `SHS_KEY`   | SSH 私钥的 base64       |
+
+触发方式：
+
+1. 确认该 commit 的 `Deploy to GCE` 已经成功（镜像已在 GHCR）
+2. 进入 **Actions → Deploy to self hosted Server → Run workflow**
+3. 选择对应分支；要部署某个已构建的旧 commit 时，把完整 SHA 填进 `commit_sha`（留空则用所选分支的 HEAD）
+4. 点击 **Run workflow**
+
+### 5.6 工作流程说明
 
 ```
 push to main
@@ -425,10 +455,10 @@ docker compose -f docker-compose.prod.yml down
 
 项目提供 `deploy/db-sync.sh` 脚本，支持**双向同步**：
 
-| 方向 | 命令 | 说明 |
-|------|------|------|
+| 方向       | 命令   | 说明                               |
+| ---------- | ------ | ---------------------------------- |
 | 本地 → GCE | `sync` | 导出本地 → 上传 → 导入 GCE（一键） |
-| GCE → 本地 | `pull` | 下载 GCE → 恢复到本地容器（一键） |
+| GCE → 本地 | `pull` | 下载 GCE → 恢复到本地容器（一键）  |
 
 `sync` 自动完成以下步骤：
 
@@ -439,11 +469,11 @@ docker compose -f docker-compose.prod.yml down
 
 ### 前置条件
 
-| 要求 | 说明 |
-|------|------|
-| 本地安装 `pg_dump` | macOS：`brew install libpq`，并将 `pg_dump` 加入 PATH |
-| SSH 可免密登录 GCE | `ssh your_user@<GCE_IP>` 不需要输入密码 |
-| GCE 上 PostgreSQL 容器正在运行 | `docker ps \| grep itrade-db` |
+| 要求                           | 说明                                                  |
+| ------------------------------ | ----------------------------------------------------- |
+| 本地安装 `pg_dump`             | macOS：`brew install libpq`，并将 `pg_dump` 加入 PATH |
+| SSH 可免密登录 GCE             | `ssh your_user@<GCE_IP>` 不需要输入密码               |
+| GCE 上 PostgreSQL 容器正在运行 | `docker ps \| grep itrade-db`                         |
 
 ### 10.1 配置连接信息
 
@@ -544,11 +574,11 @@ ssh your_user@<GCE_IP> \
 
 ### 命令概览
 
-| 命令 | 作用 |
-|------|------|
-| `pull` | 一键：下载 GCE DB + 恢复到本地容器 |
-| `download` | 仅下载：SSH 到 GCE 导出，scp 到本地 `/tmp/itrade_db_gce_<ts>.dump` |
-| `restore-local` | 仅恢复：将已下载的 dump 还原到本地容器 |
+| 命令            | 作用                                                               |
+| --------------- | ------------------------------------------------------------------ |
+| `pull`          | 一键：下载 GCE DB + 恢复到本地容器                                 |
+| `download`      | 仅下载：SSH 到 GCE 导出，scp 到本地 `/tmp/itrade_db_gce_<ts>.dump` |
+| `restore-local` | 仅恢复：将已下载的 dump 还原到本地容器                             |
 
 ### 前置条件
 
@@ -700,4 +730,4 @@ docker system prune -af --volumes
 ---
 
 Author: <xiaoweihsueh@gmail.com>  
-Date: March 16, 2026
+Date: November 17, 2026

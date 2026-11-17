@@ -138,9 +138,10 @@ if [ ! -f "$SSH_KEY_FILE" ]; then
   log "Public key added to ~/.ssh/authorized_keys automatically."
 
   echo ""
-  warn "Add this PRIVATE key as GitHub secret GCE_SSH_PRIVATE_KEY:"
+  warn "Add this base64-encoded PRIVATE key as GitHub secret GCE_SSH_PRIVATE_KEY:"
   echo "------"
-  cat "${SSH_KEY_FILE}"
+  base64 -w 0 "${SSH_KEY_FILE}" 2>/dev/null || base64 < "${SSH_KEY_FILE}" | tr -d '\n'
+  echo ""
   echo "------"
 else
   log "Deploy SSH key already exists at $SSH_KEY_FILE"
@@ -170,7 +171,7 @@ echo ""
 echo "  2. Add GitHub Secrets:"
 echo "       GCE_HOST            → $GCE_IP"
 echo "       GCE_USER            → $DEPLOY_USER"
-echo "       GCE_SSH_PRIVATE_KEY → (see private key printed above)"
+echo "       GCE_SSH_PRIVATE_KEY → (base64 printed above; workflow runs base64 -d)"
 echo ""
 echo "  3. Point your domain DNS A-record → $GCE_IP"
 echo ""
