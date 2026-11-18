@@ -162,11 +162,15 @@ jobs:
           echo "✅ All required Android secrets are present"
 
       # ── Java (required by Gradle) ────────────────────────────
-      - name: Set up Java 17
+      # Java 21 required: AGP 9.3 lint (lintVitalAnalyzeRelease) calls
+      # java.util.List.removeLast() (Java 21 SequencedCollection API);
+      # on Java 17 it dies with NoSuchMethodError inside the lint
+      # detector (CommentDetector) on url_launcher_android.
+      - name: Set up Java 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       # ── Flutter ──────────────────────────────────────────────
       # Pinned to an explicit version: `channel: stable` silently moved from
