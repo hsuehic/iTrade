@@ -169,10 +169,17 @@ jobs:
           java-version: '17'
 
       # ── Flutter ──────────────────────────────────────────────
-      - name: Set up Flutter (stable)
+      # Pinned to an explicit version: `channel: stable` silently moved from
+      # 3.47.x to 3.50.0 on 2026-11-11 and hard-broke the Android build
+      # (new Gradle/AGP/KGP minimums). Bump this pin deliberately.
+      # subosito/flutter-action resolves flutter-version first when both are
+      # set; channel is informational. CI runs `flutter pub get` (never
+      # `pub upgrade`), so the committed pubspec.lock fully pins deps.
+      - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: 3.50.0
           cache: true
 
       # ── Environment config files ─────────────────────────────
@@ -331,10 +338,17 @@ jobs:
           echo "✅ All required iOS secrets are present"
 
       # ── Flutter ──────────────────────────────────────────────
-      - name: Set up Flutter (stable)
+      # Pinned to an explicit version: `channel: stable` silently moved from
+      # 3.47.x to 3.50.0 on 2026-11-11 and hard-broke the Android build
+      # (new Gradle/AGP/KGP minimums). Bump this pin deliberately.
+      # subosito/flutter-action resolves flutter-version first when both are
+      # set; channel is informational. CI runs `flutter pub get` (never
+      # `pub upgrade`), so the committed pubspec.lock fully pins deps.
+      - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: 3.50.0
           cache: true
 
       # ── Environment config files ─────────────────────────────
@@ -527,6 +541,11 @@ jobs:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          # Numeric Apple ID of the iTrade app (public: apps.apple.com id6753905284).
+          # Passed explicitly so altool does not have to resolve it from the Bundle
+          # ID — that lookup started failing on 2026-11-17 with "Unable to find
+          # Apple ID for Bundle ID 'com.ihsueh.itrade'" (exit 31).
+          ASC_APPLE_ID: '6753905284'
         run: |
           # Write the .p8 API key to one of the fixed paths that xcrun altool
           # searches. $RUNNER_TEMP is NOT in altool's search list; ~/.appstoreconnect/private_keys is.
@@ -554,6 +573,7 @@ jobs:
             --upload-app \
             --type ios \
             --file "$IPA_PATH" \
+            --apple-id "$ASC_APPLE_ID" \
             --apiKey  "$ASC_KEY_ID" \
             --apiIssuer "$ASC_ISSUER_ID" \
             --output-format json > "$RUNNER_TEMP/altool_output.log" 2>"$RUNNER_TEMP/altool_stderr.log"

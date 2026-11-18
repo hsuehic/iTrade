@@ -3,10 +3,10 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  cloud_firestore
   desktop_webview_window
-  firebase_auth
   firebase_core
+  cloud_firestore
+  firebase_auth
   firebase_remote_config
   local_auth_windows
   record_windows

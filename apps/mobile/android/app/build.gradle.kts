@@ -22,13 +22,18 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
         isCoreLibraryDesugaringEnabled = true
     }
 
-    kotlinOptions {
-        jvmTarget = "1.8"
+    kotlin {
+        compilerOptions {
+            // KGP 2.4 removed the deprecated kotlinOptions DSL; this is the
+            // replacement (matches the Flutter 3.50 app template). Must match
+            // the Java compileOptions target above.
+            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        }
     }
 
     defaultConfig {
@@ -63,9 +68,6 @@ android {
 dependencies {
     // Core library desugaring 库
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
-
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.10")
-    // 其他依赖
 }
 
 flutter {

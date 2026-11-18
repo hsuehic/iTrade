@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.4+80
+version: 1.2.4+81
 
 environment:
   sdk: ^3.9.2
@@ -47,7 +47,8 @@ dependencies:
   firebase_core: ^4.1.0
   firebase_auth: ^6.1.0
   cloud_firestore: ^6.1.2
-  firebase_remote_config: ^6.1.0
+  # See the firebase_analytics pin comment above for why this is pinned.
+  firebase_remote_config: 6.2.0
   firebase_messaging: ^16.0.1
   flutter_local_notifications: ^21.0.0
   mobile_scanner: ^7.0.1
@@ -71,7 +72,20 @@ dependencies:
   sign_in_with_apple: ^7.0.1
   flutter_screenutil: ^5.9.3
   flutter_slidable: ^4.0.3
-  firebase_analytics: ^12.0.3
+  # NOTE: analytics + remote_config are version-pinned (not ^) because versions
+  # >= 12.3.0 / 6.4.0 drop the unconditional `apply plugin: 'kotlin-android'` —
+  # under AGP >= 9 they assume AGP built-in Kotlin and apply nothing. This repo
+  # pins android.builtInKotlin=false (Flutter 3.50 template default), and the
+  # Flutter Gradle plugin's fallback auto-apply skips any subproject whose build
+  # script text mentions kotlin-android — per the FGP source as of 3.50.0
+  # (FlutterPluginUtils.kt getSubprojectPluginState), the guarded `apply plugin:`
+  # line still matches its regex, so it skips. Their Kotlin sources are then
+  # never compiled -> "cannot find symbol FlutterFirebaseAnalyticsPlugin" at
+  # app compile. The pinned versions apply kotlin-android unconditionally and
+  # build fine. Re-evaluate this pin when enabling AGP built-in Kotlin or when
+  # FlutterFire ships a version whose Kotlin plugin application works under
+  # builtInKotlin=false.
+  firebase_analytics: 12.1.3
   flutter_dotenv: ^6.0.0
   package_info_plus: ^9.0.0
   flutter_native_badge: ^2.0.1
