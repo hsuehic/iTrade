@@ -5,6 +5,7 @@ import {
   getAnalyticsCached,
   setAnalyticsCached,
 } from '@/lib/analytics-cache';
+import { computeBaselineAnchors, computeTransferStarts } from '@/lib/analytics-baseline';
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
 
@@ -12,17 +13,6 @@ import { getSession } from '@/lib/auth';
 export interface ChartDataPoint {
   date: string;
   [exchange: string]: string | number; // exchange names as keys with balance values
-}
-
-interface BalanceHistoryPoint {
-  timestamp: Date;
-  balance: { toString(): string };
-  free: { toString(): string };
-  locked: { toString(): string };
-  // NULL for rows written before the column existed ("unknown")
-  unrealizedPnl?: { toString(): string } | null;
-  createdAt?: Date;
-  accountId?: number;
 }
 
 /**
@@ -339,31 +329,19 @@ export async function GET(request: Request) {
       transferStartByExchange[ex.toLowerCase()] = startTime;
     });
 
-    const getTransferStartAfterBaseline = (
-      point: BalanceHistoryPoint,
-      defaultStart: Date,
-    ): Date => {
-      const bucketEnd = new Date(point.timestamp.getTime() + bucketIntervalMs);
-      const createdAt = point.createdAt ? new Date(point.createdAt) : null;
-
-      // First-account bootstrap rows are written after their synthetic period has
-      // already ended. Transfers before that write are already reflected in the
-      // baseline and must not be subtracted again.
-      if (createdAt && createdAt.getTime() > bucketEnd.getTime()) {
-        return createdAt;
-      }
-
-      return defaultStart;
-    };
-
-    // Calendar / custom-window mode: fetch the last non-zero balance at the end of the
-    // previous period — this is the "opening balance" baseline.
-    // Rolling mode: baseline is computed later from the first non-zero point in chartDataArray.
-    let totalBaselineBalance = 0;
-    // Unrealized P&L at the baseline point(s), taken from the SAME balance-history
-    // rows as the balance baseline so both anchors are perfectly aligned.
-    // Used to split the equity change into realized vs unrealized components:
-    //   realizedPnl = balanceChangeValue − (currentUPnl − baselineUPnl)
+    // Calendar / custom-window mode: fetch each account's latest balance at the
+    // end of the previous period — this is the "opening balance" baseline
+    // (latest row, including a 0 row — admin ROI parity).
+    // Rolling mode: no baseline-window fetch; anchors come from the chart window.
+    // The baseline is computed PER ACCOUNT in lib/analytics-baseline.ts: accounts
+    // with no rows in the baseline window — typically bound to iTrade mid-period —
+    // anchor at their first recorded balance, so a pre-existing balance added
+    // later in the period is never reported as period profit. When every
+    // account's baseline is 0, the change is reported against 0 (no aggregate
+    // fallback) — same as the admin ROI route's semantics.
+    let baselineData: Array<{
+      history: Awaited<ReturnType<typeof dm.getBalanceTimeSeries>>;
+    }> = [];
     let baselineUnrealizedPnl = 0;
     // True when some baseline rows predate the unrealizedPnl column (NULL → treated
     // as 0), meaning the realized figure is an approximation until history rewrites.
@@ -392,52 +370,7 @@ export async function GET(request: Request) {
           userId,
         ),
       }));
-      const baselineData = await Promise.all(baselinePromises);
-
-      const baselineBalances: Record<string, number> = {};
-      baselineData.forEach(({ exchange: exName, history }) => {
-        // Sum the latest non-zero balance for EACH account belonging to this exchange
-        const latestPerAccount: Record<number, BalanceHistoryPoint> = {};
-        for (let i = history.length - 1; i >= 0; i--) {
-          const point = history[i] as BalanceHistoryPoint;
-          const accountId = point.accountId;
-          if (accountId && latestPerAccount[accountId] === undefined) {
-            const bal = parseFloat(point.balance.toString());
-            if (bal > 0) {
-              latestPerAccount[accountId] = point;
-            }
-          }
-        }
-        const baselinePoints = Object.values(latestPerAccount);
-        baselineBalances[exName] = baselinePoints.reduce(
-          (sum, point) => sum + parseFloat(point.balance.toString()),
-          0,
-        );
-
-        // Baseline unrealized P&L from the same rows that provided the balance baseline
-        for (const point of baselinePoints) {
-          const upnl = point.unrealizedPnl;
-          if (upnl === null || upnl === undefined) {
-            realizedPnlApproximate = true;
-          } else {
-            baselineUnrealizedPnl += parseFloat(upnl.toString());
-          }
-        }
-
-        if (baselinePoints.length > 0) {
-          const exchangeTransferStart = baselinePoints
-            .map((point) => getTransferStartAfterBaseline(point, startTime))
-            .reduce((min, pointStart) =>
-              pointStart.getTime() < min.getTime() ? pointStart : min,
-            );
-          transferStartByExchange[exName.toLowerCase()] = exchangeTransferStart;
-        }
-      });
-
-      totalBaselineBalance = exchangesToQuery.reduce(
-        (sum, ex) => sum + (baselineBalances[ex] ?? 0),
-        0,
-      );
+      baselineData = await Promise.all(baselinePromises);
     }
 
     const historyPromises = exchangesToQuery.map(async (exchangeName) => {
@@ -454,7 +387,6 @@ export async function GET(request: Request) {
     });
 
     const historicalData = await Promise.all(historyPromises);
-
     const chartData: { [key: string]: ChartDataPoint } = {};
 
     historicalData.forEach(({ exchange: exName, history }) => {
@@ -492,58 +424,33 @@ export async function GET(request: Request) {
       });
     });
 
-    // Rolling mode or fallback (if previous period has no data):
-    // find the first non-zero aggregate snapshot within the current window.
-    // Custom windows always have a baseline already set, so skip the fallback only
-    // when align === 'rolling' (and we haven't overridden with a custom window).
-    let baselineBalance = totalBaselineBalance;
-    if ((!useCustomWindow && align === 'rolling') || baselineBalance === 0) {
-      for (const point of chartDataArray) {
-        const total = Object.values(point)
-          .filter((v) => typeof v === 'number' && !isNaN(v))
-          .reduce((sum: number, v) => sum + (v as number), 0);
-        if (total > 0) {
-          baselineBalance = total;
+    // ── Per-account baseline anchors ──────────────────────────────────────────
+    // Accounts active in the selected scope (exchange filter applied above).
+    const scopedAccounts = latestSnapshots.map((a) => ({
+      id: a.id,
+      exchange: a.exchange,
+    }));
+    const anchors = computeBaselineAnchors({
+      baselineData,
+      chartData: historicalData,
+      accounts: scopedAccounts,
+    });
 
-          // Baseline unrealized P&L at this bucket: sum across ALL accounts on
-          // each exchange (the balance baseline above is an aggregate too).
-          // Overrides the calendar-branch value when running as a fallback.
-          let fallbackUnrealizedPnl = 0;
-          historicalData.forEach(({ exchange: exName, history }) => {
-            const exchangeBalance = point[exName];
-            if (typeof exchangeBalance !== 'number' || exchangeBalance <= 0) {
-              return;
-            }
+    let baselineBalance = anchors.totalBaselineBalance;
+    baselineUnrealizedPnl = anchors.baselineUnrealizedPnl;
+    realizedPnlApproximate = anchors.realizedPnlApproximate;
 
-            const baselinePoint = history.find(
-              (historyPoint) =>
-                getDateKey(historyPoint.timestamp, historyInterval) === point.date,
-            ) as BalanceHistoryPoint | undefined;
-
-            if (baselinePoint) {
-              transferStartByExchange[exName.toLowerCase()] =
-                getTransferStartAfterBaseline(
-                  baselinePoint,
-                  new Date(new Date(point.date).getTime() + bucketIntervalMs),
-                );
-            }
-
-            for (const historyPoint of history) {
-              if (getDateKey(historyPoint.timestamp, historyInterval) !== point.date) {
-                continue;
-              }
-              const upnl = historyPoint.unrealizedPnl;
-              if (upnl === null || upnl === undefined) {
-                realizedPnlApproximate = true;
-              } else {
-                fallbackUnrealizedPnl += parseFloat(upnl.toString());
-              }
-            }
-          });
-          baselineUnrealizedPnl = fallbackUnrealizedPnl;
-          break;
-        }
-      }
+    // Transfer window per exchange (see computeTransferStarts). The earliest
+    // account anchor per exchange wins; exchanges with no anchored account
+    // keep the default windowStart.
+    for (const [exKey, transferStart] of computeTransferStarts({
+      anchors: anchors.anchors,
+      anchoredInBaselineWindow: anchors.anchoredInBaselineWindow,
+      accounts: scopedAccounts,
+      bucketIntervalMs,
+      windowStart: startTime,
+    })) {
+      transferStartByExchange[exKey] = transferStart;
     }
 
     const calculateChange = (current: number, baseline: number): number => {
